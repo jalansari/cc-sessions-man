@@ -2,6 +2,8 @@
 
 Lists every Claude Code session on this machine and says whether it is finished or waiting on you.
 
+> **AI-written:** almost all of this project's code, tests and documentation were written and reviewed by AI (Claude, through Claude Code). A human decided what to build, checked the results and approved each change.
+
 - [cc-sessions-man](#cc-sessions-man)
   - [What it reports](#what-it-reports)
   - [Requirements](#requirements)
