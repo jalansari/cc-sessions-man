@@ -26,7 +26,6 @@ wheels = [
 
 [[package]]
 name = "cc-sessions-man"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "send2trash" },

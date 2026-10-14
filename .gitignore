@@ -5,3 +5,6 @@ __pycache__/
 .claude/settings.local.json
 htmlcov/
 .coverage
+dist/
+build/
+*.egg-info/

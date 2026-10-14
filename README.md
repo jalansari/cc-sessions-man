@@ -316,7 +316,7 @@ uv run pytest --cov=cc_sessions_man --cov-report=html  # coverage report in html
 
 GitHub Actions runs the same checks and the tests on every pull request (`.github/workflows/pr.yml`), and keeps the HTML coverage report as a `cov-reports` artifact for 7 days.
 Publishing a GitHub release builds the package and uploads it to PyPI (`.github/workflows/publish.yml`), using the `TWINE_USERNAME` and `TWINE_PASSWORD` repository secrets.
-The release must have a new version in `pyproject.toml`: PyPI rejects a version it already has.
+The package version comes from the release's tag, so tag releases as `v<version>`, for example `v0.2.0`.
 
 ### Build and publish
 
@@ -327,6 +327,14 @@ uv build
 ```
 
 This creates `dist/` with `.tar.gz` and `.whl` files.
+
+The version comes from git tags (hatch-vcs): on a `v0.2.0` tag it's `0.2.0`, and between tags it's a development version such as `0.2.1.dev3+g1a2b3c4`.
+To release, tag the commit and push the tag, then publish a GitHub release for it:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
 
 #### Configure Publishing to Pypi
 

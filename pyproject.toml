@@ -7,12 +7,12 @@ exclude = '(\.git|__pycache__|\.pytest_cache|\.venv)'
 profile = "black"
 
 [build-system]
-requires = ["uv_build>=0.11.21,<0.12.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.32,<2", "hatch-vcs>=0.5,<0.6"]
+build-backend = "hatchling.build"
 
 [project]
 name = "cc-sessions-man"
-version = "0.1.0"
+dynamic = ["version"]
 authors = [{ name = "j" }]
 description = "List Claude Code sessions and whether each is done or waiting on you"
 readme = "README.md"
@@ -47,6 +47,14 @@ Issues = "https://github.com/jalansari/cc-sessions-man/issues"
 [project.scripts]
 cc-sessions = "cc_sessions_man.cli:main"
 cc-sessions-ui = "cc_sessions_man.ui:main"
+
+# The version comes from the latest git tag (v0.2.0 -> 0.2.0); between tags it's a
+# dev version, such as 0.2.1.dev3+g1a2b3c4.
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

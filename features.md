@@ -684,4 +684,6 @@ Each session gets exactly one status.
 - **Continuous integration:** on every pull request, GitHub Actions checks formatting, import order and lint, then runs the tests with coverage, on Ubuntu 26.04 with the locked dependencies.
   - The HTML coverage report is kept as a `cov-reports` artifact for 7 days.
 - **Publishing:** a published GitHub release builds the package with `uv build` and uploads it to PyPI with twine.
+  - **Version:** taken from the git tag by hatch-vcs (`v0.2.0` gives `0.2.0`), so a release never needs a version edit. Between tags, builds get a development version.
+  - **Source archive:** holds only `src`, `tests`, the README and the license; editor, Claude Code and CI settings and the benchmarks stay out.
 - **Documentation:** the README documents setup, usage, keys, options, caching, `claude` call isolation and limitations.
