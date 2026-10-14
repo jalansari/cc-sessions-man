@@ -40,6 +40,7 @@ uv run cc-sessions --pending       # only decision / action / interrupted
 uv run cc-sessions --days 7        # only the last week
 uv run cc-sessions -n 20           # only the 20 most recent
 uv run cc-sessions --json          # machine-readable, includes a resume command
+uv run cc-sessions --search "first session where /advisor was used"   # AI search of the transcripts
 ```
 
 To run it from anywhere, install it as a tool:
@@ -106,8 +107,9 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | ↑ / ↓ | Move between sessions |
 | Enter | Resume the session: the UI closes and runs `claude --resume` in the session's folder |
 | `p` | Show only sessions that need you (decision, action, interrupted) |
-| `a` | Show all sessions: resets the group drop-down to All and clears the search |
+| `a` | Show all sessions: resets the group drop-down to All, clears the search, and clears or stops an AI search |
 | `/` | Filter by title, folder or session ID. Enter or Esc returns to the table |
+| `f` | AI search: Claude looks through every transcript for sessions matching what you describe. See [AI search](#ai-search) |
 | `Space` | Mark or unmark the session for deletion, and move down a row |
 | `u` | Unmark all. Does nothing when nothing is marked |
 | `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
@@ -121,6 +123,31 @@ It shows a table of sessions with status, start time, last activity, title, fold
 
 Use the drop-down at the top left to show a single group.
 A session in the Running group is open in another terminal, so it can't be resumed, renamed, moved or deleted from here.
+
+### AI search
+
+`/` filters by matching text in the title, folder and session ID.
+`f` asks Claude to search the transcripts themselves, for questions text matching can't answer:
+
+- "first session where `/advisor` was used"
+- "session that created github repository MY-EXAMPLE-REPO"
+
+How it works:
+
+- It runs `claude -p` (Sonnet by default) with read-only tools (Read, Grep, Glob) over `~/.claude/projects`, plus an index of the sessions' IDs, dates, folders and titles.
+  Claude greps the transcripts, reads the relevant parts and returns the matching sessions, most relevant first, each with a reason.
+- A search usually takes 10–20 seconds and costs about $0.15. It stops if it would cost more than $1 (`--search-budget`).
+  The budget is checked between steps, so a search can go over by one step.
+- While it runs, a notification and the title bar show the query, until it finishes. You can keep using the list.
+  Only one search runs at a time: `f` is blocked until it finishes (or `a` stops it).
+- Results replace the list, in Claude's order; the details panel shows why each session matched. The title bar shows the query and the count.
+  Results stay through refreshes. `s` or a header click re-sorts them, and `/` narrows them further.
+- `a` goes back to all sessions, and stops a search that's still running (with the file searches it started). So does quitting.
+- `f` waits until the list has loaded, so the search knows every session.
+- Session IDs Claude makes up are ignored.
+
+The search reads your transcripts, so excerpts of them are sent to the Anthropic API (see [How the `claude` calls are isolated](#how-the-claude-calls-are-isolated)).
+Anything you type into a session is in its transcript, so a session where you discussed a topic can match a later search for it.
 
 ### Renaming sessions
 
@@ -186,6 +213,9 @@ The confirmation dialog opens with Cancel selected, so pressing Enter by mistake
 | `--batch-size N` | Sessions per `claude` call (default 5) |
 | `-j, --jobs N` | Parallel `claude` calls (default 16). They share your account's rate limits with other Claude sessions |
 | `--claude-home DIR` | Claude config directory (default `~/.claude`, or `$CLAUDE_CONFIG_DIR`) |
+| `--search QUERY` | AI search instead of listing: print the sessions matching QUERY, most relevant first, with a reason each (or JSON with `--json`). With `-n` or `--days`, only those sessions can match |
+| `--search-model M` | Model for AI search (default `sonnet`). Also in the UI |
+| `--search-budget USD` | Stop an AI search that costs more than USD (default 1). Also in the UI |
 
 ## Using another Claude config directory
 
@@ -220,17 +250,24 @@ Both are safe to delete. The next run rebuilds them.
 To watch classification run from scratch, delete `labels.json` and start the UI.
 
 The first classification of all sessions costs a few cents. Later runs only send new or changed sessions.
+An AI search costs about $0.15 each time; its results aren't cached.
 
 ## How the `claude` calls are isolated
 
-Each classification call runs with:
+Both kinds of call run with:
 
-- `--no-session-persistence`, so the calls don't appear as sessions in the list.
-- `--tools ""` and `--strict-mcp-config`, so the model can only read the text it is given.
+- `--no-session-persistence`, so the calls don't appear as sessions in the list (or in later searches).
+- `--strict-mcp-config`, so no MCP servers load.
 - `--setting-sources ""` and an empty temporary working directory, so no hooks, settings or project `CLAUDE.md` load.
 
-Session text is sent to the Anthropic API.
-That is the same place the sessions themselves ran.
+They differ in what the model can see:
+
+- **Classification** runs with `--tools ""`: no tools, so the model only reads the last prompt and reply it's given.
+- **AI search** runs with `--tools Read,Grep,Glob` and `--add-dir ~/.claude/projects`: it can read every transcript, but can't change anything or run commands.
+  It can't read anything else either: with nobody to approve a permission prompt, `claude -p` refuses those tools outside the folders it's given (tested with files in `/tmp` and in the home folder), and the user's settings, which could widen that, aren't loaded.
+
+Session text is sent to the Anthropic API, the same place the sessions themselves ran.
+For AI search that's whatever parts of the transcripts Claude reads while searching.
 
 ## Limits
 

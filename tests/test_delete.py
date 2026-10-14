@@ -10,6 +10,7 @@ import cc_sessions_man.delete as delete_mod
 import cc_sessions_man.ui as ui
 from cc_sessions_man.classify import Cache
 from cc_sessions_man.scan import RUNNING, parse_transcript
+from cc_sessions_man.search import Match, SearchResult
 
 
 def make_home(tmp_path, ids, cwd="/w"):
@@ -608,6 +609,8 @@ def test_late_events_and_worker_results_after_quit_are_ignored(tmp_path, monkeyp
         app.apply_batch({"a": {"label": "done", "pending": ""}}, ["a"], 1)
         app.set_status("Classifying…")
         app.load_finished(False)
+        app.search_done(app.search_token, "q", SearchResult([Match("a", "r")]))
+        app.search_failed(app.search_token, RuntimeError("x"))
 
     run_ui(home, monkeypatch, steps)
 

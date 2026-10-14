@@ -8,6 +8,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from .headless import claude_command
 from .scan import ENDED, Session
 
 # Defaults chosen by benchmarks/classify_batch_size.py (2026-10-11). Batch 5: quickest
@@ -90,17 +91,7 @@ def error_labels(batch: list[Session], err: Exception, skip=()) -> dict[str, dic
 
 def call_claude(prompt: str, model: str) -> dict:
     """One headless classification call. Returns claude's full JSON result (labels, cost, timing)."""
-    cmd = [
-        "claude", "-p",
-        "--model", model,
-        "--no-session-persistence",  # don't add our own calls to the session list
-        "--tools", "",
-        "--strict-mcp-config",
-        "--setting-sources", "",  # skip user/project hooks, CLAUDE.md-driven settings
-        "--output-format", "json",
-        "--system-prompt", SYSTEM_PROMPT,
-        "--json-schema", json.dumps(SCHEMA),
-    ]
+    cmd = claude_command(model, SYSTEM_PROMPT, SCHEMA)  # no tools: it only reads the prompt
     # Run from an empty dir so no project CLAUDE.md is picked up.
     with tempfile.TemporaryDirectory() as cwd:
         proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=cwd, timeout=300)

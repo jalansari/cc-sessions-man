@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, MID_TASK, NO_REPLY, RUNNING, home_arg, scan
+from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, MID_TASK, NO_REPLY, RUNNING, Session, home_arg, scan
+from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, search
 
 CACHE_PATH = CACHE_DIR / "labels.json"
 
@@ -124,6 +125,19 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
     )
 
 
+def add_search_args(p: argparse.ArgumentParser) -> None:
+    """AI search options, shared by cc-sessions and cc-sessions-ui."""
+    p.add_argument(
+        "--search-model", default=DEFAULT_SEARCH_MODEL,
+        help=f"model alias or ID for AI search (default: {DEFAULT_SEARCH_MODEL})",
+    )
+    p.add_argument(
+        "--search-budget", type=positive_float, default=DEFAULT_SEARCH_BUDGET, metavar="USD",
+        help=f"stop an AI search that costs more than USD (default: {DEFAULT_SEARCH_BUDGET:g}). "
+        "Checked between steps, so a search can go over by one step",
+    )
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="cc-sessions", description=__doc__)
     p.add_argument("-n", "--limit", type=positive_int, help="only the N most recent sessions")
@@ -135,8 +149,42 @@ def parse_args(argv=None):
     p.add_argument("--pending", action="store_true", help="shorthand for --show decision --show action --show interrupted")
     p.add_argument("--refresh", action="store_true", help="ignore cached labels for the listed sessions and re-classify them")
     p.add_argument("--json", action="store_true", help="print JSON instead of a table")
+    p.add_argument(
+        "--search", metavar="QUERY",
+        help="AI search: ask claude to look through the transcripts for sessions matching QUERY, "
+        "and list them most relevant first. With -n or --days, only those sessions can match",
+    )
     add_common_args(p)
+    add_search_args(p)
     return p.parse_args(argv)
+
+
+def print_search(args, sessions: list[Session]) -> int:
+    print(f"Searching {len(sessions)} sessions with {args.search_model}…", file=sys.stderr)
+    try:
+        result = search(sessions, args.search, args.search_model, args.claude_home, args.search_budget)
+    except (RuntimeError, ValueError) as exc:
+        print(f"AI search failed: {exc}", file=sys.stderr)
+        return 1
+    by_id = {s.session_id: s for s in sessions}
+    found = [(by_id[m.session_id], m.reason) for m in result.matches]
+    if args.json:
+        print(json.dumps([
+            {
+                "session_id": s.session_id, "title": s.title, "cwd": s.cwd, "last_activity": s.last_timestamp,
+                "reason": reason, "resume": resume_command(args.claude_home, s.session_id, s.cwd),
+            }
+            for s, reason in found
+        ], indent=2))
+    else:
+        for s, reason in found:
+            print(f"{s.last_timestamp[:10]}  {s.session_id}  {short_path(s.cwd)}")
+            print(f"    {s.title}")
+            print(f"    {reason}")
+        print(f"\n{len(found)} found  (${result.cost_usd:.2f})", file=sys.stderr)
+    if result.unknown:
+        print(f"Ignored {len(result.unknown)} session IDs outside the sessions searched.", file=sys.stderr)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -147,6 +195,8 @@ def main(argv=None) -> int:
         sessions = [s for s in sessions if s.last_timestamp >= cutoff[:19]]
     if args.limit is not None:
         sessions = sessions[: args.limit]
+    if args.search is not None:
+        return print_search(args, sessions)
 
     cache = Cache(CACHE_PATH)
     labels, todo = cache.partition(sessions)

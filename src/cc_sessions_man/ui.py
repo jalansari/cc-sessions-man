@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -19,15 +20,18 @@ from textual.binding import Binding
 from textual.command import CommandPalette, DiscoveryHit, Hit, Hits
 from textual.content import Content
 from textual.css.query import NoMatches
+from textual.notifications import Notification, Notify
 from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, refresh_interval_arg, short_path
+from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, add_search_args, detail_of, group_of, refresh_interval_arg, short_path
 from .delete import trash_session
 from .move import move_session
+from .headless import stop
+from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
 from .paths import Completer, problem_span, to_path
 from .rename import rename_session
 from .scan import Session, claude_env, live_sessions, parse_transcript, scan
@@ -290,6 +294,39 @@ class PathInput(Input):
             self.completer.reset()
 
 
+class AskSearch(ModalScreen[str | None]):
+    """Ask what to search the transcripts for. Enter searches, Esc cancels."""
+
+    CSS = """
+    AskSearch { align: center middle; }
+    #search-dialog {
+        width: 90; height: auto; padding: 1 2;
+        border: thick $primary; background: $surface;
+    }
+    #search-dialog Label { margin-bottom: 1; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, query: str = ""):
+        super().__init__()
+        self.query_text = query
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="search-dialog"):
+            yield Label("AI search: Claude looks through every transcript  (Enter = search, Esc = cancel)")
+            yield Input(value=self.query_text, placeholder="e.g. session that created github repository MY-EXAMPLE-REPO", id="ai-query")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        query = " ".join(event.value.split())
+        if not query:
+            self.notify("Type what to search for.", severity="warning")
+            return
+        self.dismiss(query)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class MoveSession(ModalScreen[Path | None]):
     """Ask for the folder to move a session to. Enter moves, Esc cancels."""
 
@@ -407,6 +444,7 @@ class SessionsApp(App[Session | None]):
         Binding("shift+space", "clear_marks_or_mark", "Unmark all", show=False),
         Binding("n", "rename", "Rename"),
         Binding("m", "move", "Move"),
+        Binding("f", "ai_search", "AI search"),
         Binding("d", "delete", "Delete"),
         Binding("k", "toggle_keys", "Keys"),
         Binding("escape", "focus_table", "Table", show=False),
@@ -417,8 +455,22 @@ class SessionsApp(App[Session | None]):
         self, claude_home: Path, model: str, use_llm: bool,
         batch_size: int = DEFAULT_BATCH_SIZE, jobs: int = DEFAULT_JOBS,
         refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
+        search_model: str = DEFAULT_SEARCH_MODEL, search_budget: float = DEFAULT_SEARCH_BUDGET,
     ):
         super().__init__()
+        self.search_model = search_model
+        self.search_budget = search_budget
+        # AI search results, shown instead of the full list until a cleared them: session ID ->
+        # (rank, reason). Kept by ID so they survive refreshes rebuilding the rows.
+        self.found: dict[str, tuple[int, str]] | None = None
+        self.found_query = ""
+        self.searching = ""  # the query of a search in progress
+        self.search_proc = None  # its claude process, to stop it
+        self.search_token = 0  # bumped per search, so a stopped one's results are dropped
+        self.search_notice: Notification | None = None  # "Searching…", shown until it ends
+        # The worker records the process while the UI may be stopping the search: one at a time.
+        self.search_lock = threading.Lock()
+        self.loaded = False  # the first scan has been shown: the session index is complete
         self.refresh_interval = refresh_interval
         self.batch_size = batch_size
         self.jobs = jobs
@@ -562,6 +614,8 @@ class SessionsApp(App[Session | None]):
         left = Text(self.title)
         if self.sub_title:
             left.append(f"  —  {self.sub_title}", style="dim")
+        if self.searching:
+            left.append(f"  —  AI search “{self.searching}”…", style="dim")
         self.query_one(TitleBar).show(left, f"{len(self.marked)} marked" if self.marked else "")
 
     @ignore_after_quit  # called from the load worker, which can finish after quitting
@@ -587,6 +641,7 @@ class SessionsApp(App[Session | None]):
             if sid in found or (sid in old_paths and old_paths[sid].exists())
         }
         self.rows = [Row(s, labels) for s in sessions]
+        self.loaded = True
         signature = (
             tuple((r.session.session_id, r.session.mtime, r.session.state, r.session.live_status,
                    r.session.title, r.group, r.detail) for r in self.rows),
@@ -604,6 +659,8 @@ class SessionsApp(App[Session | None]):
         needle = self.query_one("#search", Input).value.strip().lower()
         out = []
         for r in self.rows:
+            if self.found is not None and r.session.session_id not in self.found:
+                continue
             if group == "pending" and r.group not in PENDING:
                 continue
             if group not in ("all", "pending") and r.group != group:
@@ -612,6 +669,9 @@ class SessionsApp(App[Session | None]):
             if needle and needle not in f"{s.title} {s.cwd} {s.session_id}".lower():
                 continue
             out.append(r)
+        if self.sort_keys == ("relevance",):  # AI search results: the model's order
+            found = self.found or {}
+            return sorted(out, key=lambda r: found.get(r.session.session_id, (len(found), ""))[0])
         # Stable sorts, least significant first, so each key orders ties in the one before.
         for i, name in reversed(list(enumerate(self.sort_keys))):
             out.sort(key=SORT_KEYS[name][0], reverse=self.descending(i))
@@ -689,6 +749,8 @@ class SessionsApp(App[Session | None]):
         self.title = f"Claude Code sessions: {len(rows)} shown, " + ", ".join(
             f"{GROUPS[g].lower()} {n}" for g, n in counts.items() if n and g in PENDING | {"running", "error"}
         )
+        if self.found is not None:
+            self.title = f"AI search “{self.found_query}”: {len(self.found)} found, {len(rows)} shown  (a = show all)"
         self.update_title_bar()
         self.update_detail()
 
@@ -719,6 +781,8 @@ class SessionsApp(App[Session | None]):
         text.append(f"{s.session_id}  ·  {short_path(s.cwd)}", style="dim")
         if s.model:
             text.append(f"  ·  {s.model}", style="dim")
+        if self.found and s.session_id in self.found:
+            text.append(f"\nAI search: {self.found[s.session_id][1]}", style="italic")
         detail.update(text)
 
     # Events and actions -----------------------------------------------------
@@ -955,9 +1019,131 @@ class SessionsApp(App[Session | None]):
         self.query_one("#group", Select).value = "pending"
 
     def action_all(self) -> None:
-        """Show every session: reset the group filter and clear the search."""
+        """Show every session: reset the group filter, clear the search and any AI search."""
+        self.cancel_search()
+        if self.found is not None:
+            self.found, self.found_query = None, ""
+            if self.sort_keys == ("relevance",):
+                self.sort_keys, self.sort_flipped = SORT_MODES[0], False
+            self.render_table()
         self.query_one("#group", Select).value = "all"
         self.query_one("#search", Input).value = ""
+
+    def action_ai_search(self) -> None:
+        """f: ask Claude to search the transcripts. Only one search runs at a time."""
+        if self.searching:
+            self.notify(f"Still searching for “{self.searching}”. Wait for it to finish, or press a to stop it.",
+                        severity="warning", markup=False)
+            return
+        if not self.loaded:  # the index would be empty, and every match dropped as unknown
+            self.notify("Still loading the sessions; try again in a moment.", severity="warning")
+            return
+
+        def done(query: str | None) -> None:
+            if query and not self.searching:
+                self.start_search(query)
+
+        self.push_screen(AskSearch(self.found_query), done)
+
+    def start_search(self, query: str) -> None:
+        with self.search_lock:
+            self.search_token += 1
+            token = self.search_token
+        self.searching = query
+        self.update_title_bar()
+        # Textual's notify() doesn't return the notification, so make our own to remove later.
+        self.search_notice = Notification(
+            f"Searching the transcripts for “{query}”…", "AI search", "information",
+            timeout=SEARCH_TIMEOUT + 30, markup=False,  # outlasts the search; removed when it ends
+        )
+        self.post_message(Notify(self.search_notice))
+        self.run_search(token, query, [r.session for r in self.rows])
+
+    def hide_search_notice(self) -> None:
+        notice, self.search_notice = self.search_notice, None
+        if notice is not None:
+            # After any queued Notify for it is handled, so it can't be shown after this.
+            self.call_later(self._remove_notice, notice)
+
+    def _remove_notice(self, notice: Notification) -> None:
+        # Textual has no public way to remove one notification. If a Textual upgrade changes
+        # these internals, the notice just stays until its timeout.
+        try:
+            if notice in self._notifications:
+                self._unnotify(notice)
+        except (AttributeError, KeyError, TypeError):
+            pass
+
+    @work(thread=True, group="search")
+    def run_search(self, token: int, query: str, sessions: list[Session]) -> None:
+        def started(proc) -> None:
+            with self.search_lock:
+                if token == self.search_token:
+                    self.search_proc = proc
+                    return
+            stop(proc)  # stopped before claude even started
+
+        try:
+            result = search(sessions, query, self.search_model, self.claude_home, self.search_budget, started)
+        except Exception as exc:  # including claude killed by something else: report it
+            self.call_from_thread(self.search_failed, token, exc)  # ignored if we stopped it
+            return
+        self.call_from_thread(self.search_done, token, query, result)
+
+    def stop_search_process(self) -> None:
+        """Make any running search's results stale and stop its claude. Touches no widgets."""
+        with self.search_lock:
+            self.search_token += 1
+            proc, self.search_proc = self.search_proc, None
+        if proc is not None and proc.poll() is None:
+            stop(proc)
+
+    def cancel_search(self) -> None:
+        """Stop a search in progress, if any; its results, if they still arrive, are dropped."""
+        if not self.searching:
+            return
+        self.stop_search_process()
+        self.searching = ""
+        self.hide_search_notice()
+        self.update_title_bar()
+
+    @ignore_after_quit  # called from the search worker, which can finish after quitting
+    def search_done(self, token: int, query: str, result) -> None:
+        if token != self.search_token:
+            return  # stopped
+        with self.search_lock:
+            self.search_proc = None
+        self.searching = ""
+        self.hide_search_notice()
+        self.found = {m.session_id: (i, m.reason) for i, m in enumerate(result.matches)}
+        self.found_query = query
+        # Show every match: no group filter or text search hiding some, the model's order first.
+        self.query_one("#group", Select).value = "all"
+        self.query_one("#search", Input).value = ""
+        self.sort_keys, self.sort_flipped = ("relevance",), False
+        self.render_table()
+        self.query_one(DataTable).move_cursor(row=0)
+        n = len(result.matches)
+        msg = f"Found {n} session{'s' * (n != 1)}" if n else "No sessions matched"
+        msg += f" (${result.cost_usd:.2f}). Press a to show all."
+        if result.unknown:
+            msg += f" Ignored {len(result.unknown)} session ID{'s' * (len(result.unknown) != 1)} not in the list."
+        self.notify(msg)
+
+    @ignore_after_quit
+    def search_failed(self, token: int, exc: Exception) -> None:
+        if token != self.search_token:
+            return
+        with self.search_lock:
+            self.search_proc = None
+        self.searching = ""
+        self.hide_search_notice()
+        self.update_title_bar()
+        self.notify(str(exc), title="AI search failed", severity="error", timeout=10, markup=False)
+
+    def on_unmount(self) -> None:
+        # Don't leave claude running after quitting. The widgets are gone by now: touch none.
+        self.stop_search_process()
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
@@ -973,6 +1159,7 @@ class SessionsApp(App[Session | None]):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="cc-sessions-ui", description=__doc__)
     add_common_args(p)
+    add_search_args(p)
     p.add_argument(
         "--refresh-interval", type=refresh_interval_arg, default=DEFAULT_REFRESH_INTERVAL, metavar="SECONDS",
         help=f"refresh the list automatically every SECONDS, at least 1 (default: {DEFAULT_REFRESH_INTERVAL:g}; 0 turns it off)",
@@ -981,6 +1168,7 @@ def main(argv=None) -> int:
 
     session = SessionsApp(
         args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs, args.refresh_interval,
+        args.search_model, args.search_budget,
     ).run()
     if session is None:
         return 0
