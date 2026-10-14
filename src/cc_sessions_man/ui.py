@@ -220,6 +220,7 @@ class SessionsApp(App[Session | None]):
     """
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
+        Binding("s", "toggle_folder_sort", "Sort"),
         Binding("p", "pending", "Pending"),
         Binding("a", "all", "All"),
         Binding("/", "focus_search", "Search"),
@@ -353,10 +354,14 @@ class SessionsApp(App[Session | None]):
             if needle and needle not in f"{s.title} {s.cwd} {s.session_id}".lower():
                 continue
             out.append(r)
-        if self.sort_column == "status":
+        if self.sort_column in ("status", "folder"):
             # Newest first within each status, whichever way the status order runs.
             out.sort(key=lambda r: r.session.last_timestamp, reverse=True)
-            return sorted(out, key=lambda r: STATUS_RANK[r.group], reverse=self.sort_reverse)
+            out.sort(key=lambda r: STATUS_RANK[r.group], reverse=self.sort_column == "status" and self.sort_reverse)
+            if self.sort_column == "folder":
+                # Stable sort: within a folder, the status-then-date order above is kept.
+                out.sort(key=lambda r: r.session.cwd, reverse=self.sort_reverse)
+            return out
         key = {
             "started": lambda r: r.session.started,
             "last": lambda r: r.session.last_timestamp,
@@ -565,6 +570,16 @@ class SessionsApp(App[Session | None]):
             self.notify(f"Moved {len(deleted)} session(s) to the Trash.")
         for msg in failed:
             self.notify(msg, title="Delete failed", severity="error")
+
+    def action_toggle_folder_sort(self) -> None:
+        """s: switch between folder > status > date and the usual status > date."""
+        if self.sort_column == "folder":
+            self.sort_column, self.sort_reverse = "status", False
+            self.notify("Sorted by status, then date.")
+        else:
+            self.sort_column, self.sort_reverse = "folder", False
+            self.notify("Sorted by folder, then status, then date.")
+        self.render_table()
 
     def action_refresh(self) -> None:
         if self.loading:

@@ -423,3 +423,32 @@ def test_theme_command_opens_marked_picker(tmp_path, monkeypatch):
         assert [type(p) for p in app.screen._providers] == [ui.MarkedThemeProvider]
 
     run_ui(home, monkeypatch, steps)
+
+
+def test_s_toggles_folder_sort(tmp_path, monkeypatch):
+    # Two folders, each with an "action" and a "done" session, at different times.
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    (tmp_path / "sessions").mkdir()
+    layout = [  # (session id, folder, minute)
+        ("b-done-new", "/b", 40), ("a-act-old", "/a", 10), ("b-act-old", "/b", 20),
+        ("a-done-new", "/a", 50), ("a-act-new", "/a", 30),
+    ]
+    for sid, folder, minute in layout:
+        (proj / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
+            {"type": "user", "message": {"content": sid}, "cwd": folder, "timestamp": f"2026-10-01T10:{minute:02d}:00Z"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}, "timestamp": f"2026-10-01T10:{minute:02d}:30Z"},
+        ]))
+    labels = {sid: {"label": "action" if "act" in sid else "done", "pending": ""} for sid, _, _ in layout}
+
+    async def steps(app, pilot):
+        app.apply_batch(labels, list(labels), len(labels))
+        await pilot.pause()
+        order = lambda: [r.session.session_id for r in app.visible_rows()]
+        assert order() == ["a-act-new", "b-act-old", "a-act-old", "a-done-new", "b-done-new"]  # status, then date
+        await pilot.press("s")
+        assert order() == ["a-act-new", "a-act-old", "a-done-new", "b-act-old", "b-done-new"]  # folder, status, date
+        await pilot.press("s")
+        assert order() == ["a-act-new", "b-act-old", "a-act-old", "a-done-new", "b-done-new"]  # back again
+
+    run_ui(tmp_path, monkeypatch, steps)

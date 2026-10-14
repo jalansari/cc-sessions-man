@@ -87,6 +87,7 @@ It shows a table of sessions with status, start time, last activity, title and f
 | `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
+| `s` | Toggle sorting by folder: folder, then status, then newest first. Press again to go back to status, then newest first |
 | `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
 | `q` | Quit |
 
