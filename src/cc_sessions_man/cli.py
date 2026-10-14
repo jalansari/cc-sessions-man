@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, ENDED, MID_TASK, NO_REPLY, RUNNING, home_arg, scan
+from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, MID_TASK, NO_REPLY, RUNNING, home_arg, scan
 
 CACHE_PATH = CACHE_DIR / "labels.json"
 
@@ -117,9 +117,8 @@ def main(argv=None) -> int:
         # --days must not throw away everyone else's labels.
         for s in sessions:
             cache.drop(s.session_id)
-    if args.no_llm:
-        labels = {s.session_id: h for s in sessions if s.state == ENDED and (h := cache.get(s))}
-    else:
+    labels, todo = cache.partition(sessions)
+    if not args.no_llm:
         def progress(msg):
             print(msg, file=sys.stderr)
 
@@ -129,7 +128,7 @@ def main(argv=None) -> int:
             if err:
                 failed.update(error_labels(batch, err, skip=new))
 
-        labels = classify(sessions, cache, args.model, args.batch_size, args.jobs, progress, on_batch)
+        labels.update(classify(todo, cache, args.model, args.batch_size, args.jobs, progress, on_batch))
         labels.update(failed)  # shown as "Classification failed"; not cached, so retried next run
 
     show = set(args.show or [])

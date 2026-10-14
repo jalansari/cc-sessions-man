@@ -19,7 +19,7 @@ from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_l
 from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, short_path
 from .delete import trash_session
 from .rename import rename_session
-from .scan import ENDED, Session, claude_env, live_sessions, scan
+from .scan import Session, claude_env, live_sessions, scan
 
 PENDING = {"decision", "action", "interrupted"}
 
@@ -263,10 +263,10 @@ class SessionsApp(App[Session | None]):
     def _load(self) -> None:
         self.call_from_thread(self.set_status, "Scanning transcripts…")
         sessions = scan(self.claude_home)
-        cached = {s.session_id: h for s in sessions if s.state == ENDED and (h := self.cache.get(s))}
-        todo = [s.session_id for s in sessions if s.state == ENDED and s.session_id not in cached]
+        # One split, used both to mark rows "Classifying…" and to choose what to send.
+        cached, todo = self.cache.partition(sessions)
         if self.use_llm:
-            self.classifying = set(todo)
+            self.classifying = {s.session_id for s in todo}
         # Show the list straight away; unclassified rows fill in as batches come back.
         self.call_from_thread(self.show, sessions, cached)
         if not (self.use_llm and todo):
@@ -278,7 +278,7 @@ class SessionsApp(App[Session | None]):
                 new = {**new, **error_labels(batch, err, skip=new)}
             self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(todo), err)
 
-        classify(sessions, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
+        classify(todo, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
 
     def apply_batch(
         self, new: dict[str, dict], batch_ids: list[str], total: int, err: Exception | None = None

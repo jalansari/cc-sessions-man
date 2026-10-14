@@ -142,6 +142,22 @@ class Cache:
             disk.update(self.data)
             self.data = disk
 
+    def partition(self, sessions: list[Session]) -> tuple[dict[str, dict], list[Session]]:
+        """Split finished sessions into cached labels and the ones still to classify.
+
+        Running and interrupted sessions are skipped: their status comes from the
+        transcript, not the model.
+        """
+        cached, todo = {}, []
+        for s in sessions:
+            if s.state != ENDED:
+                continue
+            if hit := self.get(s):
+                cached[s.session_id] = hit
+            else:
+                todo.append(s)
+        return cached, todo
+
     def get(self, s: Session) -> dict | None:
         with self._lock:
             hit = self.data.get(s.session_id)
@@ -169,7 +185,7 @@ class Cache:
 
 
 def classify(
-    sessions: list[Session],
+    todo: list[Session],
     cache: Cache,
     model: str = "haiku",
     batch_size: int = DEFAULT_BATCH_SIZE,
@@ -177,23 +193,16 @@ def classify(
     progress=None,
     on_batch=None,
 ) -> dict[str, dict]:
-    """Label every session in the ENDED state. Returns {session_id: {label, pending}}.
+    """Classify `todo` (from Cache.partition) and cache the results.
+
+    Returns the new labels, {session_id: {label, pending}}. Sessions the model skipped
+    or whose batch failed are left out.
 
     `on_batch(new_labels, batch, err)` is called as each batch finishes, in completion order,
     with the labels it produced, the sessions it covered (including any left unlabelled),
     and the exception if the call failed (otherwise None).
     """
     results: dict[str, dict] = {}
-    todo = []
-    for s in sessions:
-        if s.state != ENDED:
-            continue
-        hit = cache.get(s)
-        if hit:
-            results[s.session_id] = hit
-        else:
-            todo.append(s)
-
     batches = [todo[i : i + batch_size] for i in range(0, len(todo), batch_size)]
     if progress and batches:
         progress(f"Classifying {len(todo)} session(s) in {len(batches)} batch(es) with {model}…")
