@@ -172,7 +172,7 @@ def main(argv=None) -> int:
         print(json.dumps([
             {
                 "group": g, "status_rank": STATUS_RANK[g], "session_id": s.session_id, "title": s.title, "cwd": s.cwd,
-                "last_activity": s.last_timestamp, "detail": d,
+                "last_activity": s.last_timestamp, "detail": d, "context_tokens": s.context_tokens,
                 "resume": resume_command(args.claude_home, s.session_id, s.cwd),
             }
             for g, s, d in rows

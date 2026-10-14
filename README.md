@@ -19,7 +19,7 @@ The gaps in the numbering leave room for new statuses, and Done stays last at 99
 | 99 | Done | Nothing left to do | Haiku |
 
 Ranks are defined in `STATUS_RANK` in `src/cc_sessions_man/cli.py`.
-The `--json` output includes each session's `status_rank`.
+The `--json` output includes each session's `status_rank` and `context_tokens`.
 
 Only sessions that ended on a normal reply go to the model.
 For each one, the model gets your last prompt and Claude's final message.
@@ -63,7 +63,13 @@ uv run cc-sessions-ui --no-llm     # cached labels only, no model calls
 ```
 
 The UI is built with [Textual](https://textual.textualize.io/).
-It shows a table of sessions with status, start time, last activity, title and folder.
+It shows a table of sessions with status, start time, last activity, title, folder and context size.
+
+- **Context** is how full the session's context was at Claude's last reply: the input tokens it was given, including cached ones.
+  It's shown as, for example, `134k` or `1.0M`, and is blank for sessions with no recorded usage.
+  Its colour shows the band: blue below 250k, green from 250k, yellow from 500k, and red from 800k.
+  Click the heading to sort largest first.
+- Folders longer than 40 characters keep their end, for example `…/my-app/.claude/skills/changelog-writer`. The details panel shows the full path.
 
 - The list appears as soon as the transcripts are scanned, using cached labels.
   Sessions with no cached label show as "Classifying…".

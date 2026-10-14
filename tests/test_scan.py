@@ -366,3 +366,49 @@ def test_unparseable_transcript_is_not_reread_every_scan(tmp_path, monkeypatch):
     write(proj / "bad.jsonl", [user("x"), user("y")])  # the file changes: try again
     scan(tmp_path, cache)
     assert attempts == ["bad"]
+
+
+def test_context_tokens_from_last_main_reply(tmp_path):
+    def reply(text, usage, **kw):
+        return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}], "usage": usage},
+                "timestamp": "2026-10-01T10:01:00Z", **kw}
+
+    s = parse_transcript(write(tmp_path / "a.jsonl", [
+        user("go"),
+        reply("first", {"input_tokens": 10, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 1000}),
+        user("more"),
+        reply("second", {"input_tokens": 2, "cache_creation_input_tokens": 306,
+                         "cache_read_input_tokens": 133269, "output_tokens": 1339}),
+        reply("subagent", {"input_tokens": 999999}, isSidechain=True),  # not the main context
+    ]))
+    assert s.context_tokens == 2 + 306 + 133269  # latest main reply; output tokens not counted
+
+    odd = parse_transcript(write(tmp_path / "b.jsonl", [
+        user("go"), reply("x", {"input_tokens": "12", "cache_read_input_tokens": True, "cache_creation_input_tokens": 5}),
+    ]))
+    assert odd.context_tokens == 5  # non-integers ignored
+
+    none = parse_transcript(write(tmp_path / "c.jsonl", [user("go"), assistant([{"type": "text", "text": "hi"}])]))
+    assert none.context_tokens == 0
+
+
+def test_format_tokens():
+    from cc_sessions_man.ui import format_tokens
+    assert [format_tokens(n) for n in (0, 850, 1234, 9950, 133577, 999500, 1_200_000)] == \
+        ["", "0.8k", "1.2k", "10k", "134k", "1.0M", "1.2M"]
+
+
+def test_truncate_start_keeps_the_end_of_a_path():
+    from cc_sessions_man.ui import truncate_start
+    assert truncate_start("~/short") == "~/short"
+    long = "~/code/acme/my-app/.claude/skills/changelog-writer"
+    out = truncate_start(long)
+    assert len(out) == 40 and out.startswith("…") and long.endswith(out[1:])
+
+
+def test_context_colour_bands():
+    from cc_sessions_man.ui import context_style
+    blue, green, yellow, red = "#61afef", "#4ec96b", "#f0b429", "bold #f25f5c"
+    cases = {0: blue, 249_999: blue, 250_000: green, 499_999: green, 500_000: yellow,
+             799_999: yellow, 800_000: red, 1_500_000: red}
+    assert {n: context_style(n) for n in cases} == cases

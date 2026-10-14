@@ -38,7 +38,10 @@ GROUP_STYLE = {
     "error": "bold #ff8c42",
 }
 
-COLUMNS = [("status", "Status"), ("started", "Started"), ("last", "Last activity"), ("title", "Title"), ("cwd", "Folder")]
+COLUMNS = [
+    ("status", "Status"), ("started", "Started"), ("last", "Last activity"),
+    ("title", "Title"), ("cwd", "Folder"), ("context", "Context"),
+]
 
 # How each column sorts: key function and whether it runs descending by default.
 SORT_KEYS = {
@@ -47,6 +50,7 @@ SORT_KEYS = {
     "last": (lambda r: r.session.last_timestamp, True),  # newest first
     "title": (lambda r: r.session.title.lower(), False),
     "cwd": (lambda r: r.session.cwd, False),
+    "context": (lambda r: r.session.context_tokens, True),  # largest first
 }
 
 # The orders the s key cycles through: (primary, secondary, tertiary).
@@ -56,8 +60,17 @@ SORT_MODES = [
     ("cwd", "status", "last"),
     ("last", "cwd", "status"),
 ]
-COLUMN_NAMES = {"status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder"}
+COLUMN_NAMES = {
+    "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
+    "context": "context size",
+}
 TITLE_MAX = 50
+FOLDER_MAX = 40
+
+
+def truncate_start(text: str, limit: int = FOLDER_MAX) -> str:
+    """Keep the end of a path, which tells folders apart: "…/my-app/.claude/skills/x"."""
+    return text if len(text) <= limit else "…" + text[-(limit - 1):]
 
 
 def truncate_words(text: str, limit: int = TITLE_MAX, marker: str = "...") -> str:
@@ -76,6 +89,30 @@ def truncate_words(text: str, limit: int = TITLE_MAX, marker: str = "...") -> st
         if cut > 0:
             return text[:cut].rstrip(" -_/.,;:") + marker
     return text[:room] + marker
+
+
+def format_tokens(n: int) -> str:
+    """Token count for the table: 1.2k, 134k, 1.0M; blank when unknown."""
+    if n <= 0:
+        return ""
+    if n >= 999_500:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 9_950:
+        return f"{n / 1000:.0f}k"
+    return f"{n / 1000:.1f}k"
+
+
+# Context size colour bands: (upper bound, exclusive; style). Each band starts where the last ends.
+CONTEXT_BANDS = [
+    (250_000, "#61afef"),  # blue: 0 to 250k
+    (500_000, "#4ec96b"),  # green: 250k to 500k
+    (800_000, "#f0b429"),  # yellow: 500k to 800k
+    (None, "bold #f25f5c"),  # red: 800k and above
+]
+
+
+def context_style(n: int) -> str:
+    return next(style for limit, style in CONTEXT_BANDS if limit is None or n < limit)
 
 
 def local_time(ts: str) -> str:
@@ -409,7 +446,8 @@ class SessionsApp(App[Session | None]):
                 local_time(s.started),
                 local_time(s.last_timestamp),
                 truncate_words(s.title),
-                short_path(s.cwd),
+                truncate_start(short_path(s.cwd)),
+                Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
                 key=s.session_id,
             )
         if selected:

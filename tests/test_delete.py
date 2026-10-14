@@ -588,3 +588,24 @@ def test_k_toggles_keys_panel(tmp_path, monkeypatch):
         assert not panel() and app.query_one("#search", ui.Input).value == "k"
 
     run_ui(home, monkeypatch, steps)
+
+
+def test_context_column_shows_and_sorts(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["small", "big"])
+    for sid, tokens in (("small", 1500), ("big", 250_000)):
+        path = home / "projects" / "-w" / f"{sid}.jsonl"
+        with path.open("a") as fh:
+            fh.write("\n" + json.dumps({"type": "assistant", "timestamp": "2026-10-01T00:00:30Z", "message": {
+                "content": [{"type": "text", "text": "ok"}], "usage": {"cache_read_input_tokens": tokens}}}) + "\n")
+
+    async def steps(app, pilot):
+        table = app.query_one(ui.DataTable)
+        labels = [str(c.label) for c in table.columns.values()]
+        assert labels[-1] == "Context"
+        cells = {r.session.session_id: str(table.get_row(r.session.session_id)[-1]) for r in app.rows}
+        assert cells == {"small": "1.5k", "big": "250k"}
+        app.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "context"})()})())
+        assert [r.session.session_id for r in app.visible_rows()] == ["big", "small"]  # largest first
+        assert "Context ^1" in [str(c.label) for c in table.columns.values()]
+
+    run_ui(home, monkeypatch, steps)

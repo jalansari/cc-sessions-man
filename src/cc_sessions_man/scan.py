@@ -34,7 +34,7 @@ def home_arg(value: str) -> Path:
 
 CLAUDE_HOME = claude_home_from_env()
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", "").strip() or Path.home() / ".cache") / "cc-sessions-man"
-SCAN_CACHE_VERSION = 1  # bump when Session fields or parsing change
+SCAN_CACHE_VERSION = 2  # bump when Session fields or parsing change
 
 # Structural states, decided without a model.
 RUNNING = "running"
@@ -56,6 +56,7 @@ class Session:
     live_status: str = ""  # busy / idle, from the live session file
     last_user_prompt: str = ""
     last_assistant_text: str = ""
+    context_tokens: int = 0  # context size at Claude's last reply (input + cached input tokens)
 
 
 def _proc_start(pid: int) -> str | None:
@@ -103,6 +104,15 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
 def _str(value) -> str:
     """A transcript field as a string; anything else (null, numbers, objects) becomes ""."""
     return value if isinstance(value, str) else ""
+
+
+def _context_tokens(message) -> int:
+    """Tokens in the context a reply was generated from: fresh, cache-written and cache-read input."""
+    usage = message.get("usage") if isinstance(message, dict) else None
+    if not isinstance(usage, dict):
+        return 0
+    fields = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    return sum(v for f in fields if isinstance(v := usage.get(f), int) and not isinstance(v, bool))
 
 
 def _text(content) -> str:
@@ -155,6 +165,8 @@ def parse_transcript(path: Path) -> Session | None:
             s.cwd = _str(e.get("cwd")) or s.cwd
             message = e.get("message")
             content = message.get("content") if isinstance(message, dict) else None
+            if t == "assistant" and (tokens := _context_tokens(message)):
+                s.context_tokens = tokens  # the latest reply's context is the session's current size
             if t == "user":
                 if _is_tool_result(content):
                     last_kind = "tool_result"
