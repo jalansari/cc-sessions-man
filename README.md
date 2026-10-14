@@ -93,7 +93,9 @@ It shows a table of sessions with status, start time, last activity, title, fold
 - By default it sorts by status rank, with the newest last activity first within each status.
 - `s` cycles through four sort orders (see the keys below).
 - Click a column header to sort by that column alone. Click it again to reverse the order.
-- The headings show the current sort: `^1` marks the primary sort column, `^2` the secondary and `^3` the tertiary.
+- The headings show the current sort: `^` for ascending (A to Z, lowest first) and `v` for descending (newest or largest first).
+  With several sort columns, the marks are numbered by precedence: in `Status ^1` and `Last activity v2`, status is the primary sort and last activity the secondary.
+  A single-column sort from a header click shows just `^` or `v`.
   Status sorts by rank (needs you first), last activity newest first, and folder A to Z.
 - The panel at the bottom shows the selected session's outstanding work, full ID, folder and full model ID.
 

@@ -1,5 +1,7 @@
 import asyncio
 import json
+import re
+from types import SimpleNamespace
 
 import pytest
 
@@ -83,6 +85,11 @@ def run_ui(home, monkeypatch, steps):
             return {r.session.session_id for r in app.rows}
 
     return asyncio.run(go())
+
+
+def select_header(app, key):
+    """Sort as a click on a column heading does, without depending on where the heading is."""
+    app.on_data_table_header_selected(SimpleNamespace(column_key=SimpleNamespace(value=key)))
 
 
 def test_ui_cancel_keeps_session(tmp_path, monkeypatch, trashed):
@@ -361,16 +368,16 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
     expected = [
         # 1) status, then last activity
         (["a-act-new", "b-tie", "b-act-old", "a-act-old", "a-done-new", "b-done-new", "a-tie"],
-         {"Status ^1", "Last activity ^2"}),
+         {"Status ^1", "Last activity v2"}),
         # 2) last activity, then status (the tie: action before done)
         (["a-done-new", "b-done-new", "a-act-new", "b-tie", "a-tie", "b-act-old", "a-act-old"],
-         {"Last activity ^1", "Status ^2"}),
+         {"Last activity v1", "Status ^2"}),
         # 3) folder, then status, then last activity
         (["a-act-new", "a-act-old", "a-done-new", "a-tie", "b-tie", "b-act-old", "b-done-new"],
-         {"Folder ^1", "Status ^2", "Last activity ^3"}),
+         {"Folder ^1", "Status ^2", "Last activity v3"}),
         # 4) last activity, then folder, then status (the tie: /a before /b)
         (["a-done-new", "b-done-new", "a-act-new", "a-tie", "b-tie", "b-act-old", "a-act-old"],
-         {"Last activity ^1", "Folder ^2", "Status ^3"}),
+         {"Last activity v1", "Folder ^2", "Status ^3"}),
     ]
 
     async def steps(app, pilot):
@@ -378,7 +385,7 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         await pilot.pause()
         table = app.query_one(ui.DataTable)
         order = lambda: [r.session.session_id for r in app.visible_rows()]
-        marked = lambda: {str(c.label) for c in table.columns.values() if "^" in str(c.label)}
+        marked = lambda: {str(c.label) for c in table.columns.values() if re.search(r" [\^v]\d?$", str(c.label))}
         for n, (rows, headings) in enumerate(expected):
             if n:
                 await pilot.press("s")
@@ -389,7 +396,11 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         assert (order(), marked()) == expected[0]
         await pilot.click("#table", offset=(30, 0))  # a header click: a single-column sort
         await pilot.pause()
-        assert marked() == {"Started ^1"}
+        assert marked() == {"Started v"}  # one sort column: no number; newest first
+        # A second click reverses it (by key: the headings have shifted now Status lost its mark).
+        select_header(app, "started")
+        await pilot.pause()
+        assert marked() == {"Started ^"}
         await pilot.press("s")  # from there, s starts again at 1
         await pilot.pause()
         assert marked() == expected[0][1]
@@ -521,9 +532,16 @@ def test_context_column_shows_and_sorts(tmp_path, monkeypatch):
         assert "Context" in labels
         cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "context")) for r in app.rows}
         assert cells == {"small": "1.5k", "big": "250k"}
-        app.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "context"})()})())
+        width = lambda: table.columns["context"].get_render_width(table)
+        before = width()
+        select_header(app, "context")
+        await pilot.pause()
         assert [r.session.session_id for r in app.visible_rows()] == ["big", "small"]  # largest first
-        assert "Context ^1" in [str(c.label) for c in table.columns.values()]
+        assert "Context v" in [str(c.label) for c in table.columns.values()]
+        assert width() == before  # the sort mark doesn't widen the column
+        select_header(app, "context")
+        await pilot.pause()
+        assert "Context ^" in [str(c.label) for c in table.columns.values()] and width() == before
 
     run_ui(home, monkeypatch, steps)
 
@@ -542,10 +560,20 @@ def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
         assert labels[-2:] == ["Context", "Model"]
         cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "model")) for r in app.rows}
         assert cells == {"o": "opus-5-5", "h": "haiku-4-5", "none": ""}
-        app.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "model"})()})())
+        select_header(app, "model")
         assert [r.session.session_id for r in app.visible_rows()] == ["h", "o", "none"]  # A to Z, blanks last
+        assert "Model ^" in [str(c.label) for c in table.columns.values()]
         table.move_cursor(row=0)
         await pilot.pause()
         assert "claude-haiku-4-5-20251001" in str(app.query_one("#detail", ui.Static).render())
 
     run_ui(home, monkeypatch, steps)
+
+
+def test_fixed_width_headings_fit_every_sort_mark():
+    """A fixed-width column must fit its heading with any mark it can get, or the mark is cut off."""
+    for key, width in ui.COLUMN_WIDTHS.items():
+        label = dict(ui.COLUMNS)[key]
+        numbered = any(key in mode for mode in ui.SORT_MODES)  # in a multi-column sort: "^1"
+        longest = f"{label} v{len(max(ui.SORT_MODES, key=len))}" if numbered else f"{label} v"
+        assert len(longest) <= width, f"{key}: {longest!r} doesn't fit in {width}"

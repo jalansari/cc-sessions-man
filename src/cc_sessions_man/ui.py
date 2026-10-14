@@ -64,6 +64,11 @@ SORT_MODES = [
     ("cwd", "status", "last"),
     ("last", "cwd", "status"),
 ]
+# Fixed widths, so adding a sort mark doesn't resize the column. The heading sets Context's
+# width: "Context v" is 9, and wider than any value ("134k", "1.0M"). It's in no SORT_MODES
+# entry, so its mark never gets a number (a test checks every possible heading fits).
+# Headings of these columns are right-aligned to match their values.
+COLUMN_WIDTHS = {"context": len("Context v")}
 COLUMN_NAMES = {
     "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
     "context": "context size", "model": "model",
@@ -506,16 +511,25 @@ class SessionsApp(App[Session | None]):
             out.append(r)
         # Stable sorts, least significant first, so each key orders ties in the one before.
         for i, name in reversed(list(enumerate(self.sort_keys))):
-            fn, descending = SORT_KEYS[name]
-            out.sort(key=fn, reverse=descending ^ (i == 0 and self.sort_flipped))
+            out.sort(key=SORT_KEYS[name][0], reverse=self.descending(i))
         return out
 
+    def descending(self, i: int) -> bool:
+        """Whether the i-th sort key runs descending; a second header click flips the primary."""
+        return SORT_KEYS[self.sort_keys[i]][1] ^ (i == 0 and self.sort_flipped)
+
     def add_columns(self, table: DataTable) -> None:
-        """Column headings, with ^1 / ^2 / ^3 on the primary, secondary and tertiary sort."""
+        """Column headings marked with the sort: ^ ascending, v descending.
+
+        With several sort keys, the marks are numbered by precedence: Status ^1, Last activity v2.
+        """
         for key, label in COLUMNS:
             if key in self.sort_keys:
-                label = f"{label} ^{self.sort_keys.index(key) + 1}"
-            table.add_column(label, key=key)
+                i = self.sort_keys.index(key)
+                mark = "v" if self.descending(i) else "^"
+                label = f"{label} {mark}{i + 1 if len(self.sort_keys) > 1 else ''}"
+            width = COLUMN_WIDTHS.get(key)
+            table.add_column(Text(label, justify="right") if width else label, key=key, width=width)
 
     def render_table(self) -> None:
         table = self.query_one(DataTable)
