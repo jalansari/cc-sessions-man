@@ -112,7 +112,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `u` | Unmark all. Does nothing when nothing is marked |
 | `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
-| `m` | Move the selected session to another working folder. Enter moves, Esc cancels |
+| `m` | Move the selected session to another working folder. Tab completes folder names, Enter moves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
@@ -136,6 +136,13 @@ A running session can't be renamed from here; use `/rename` inside it.
 
 `m` moves a session to another working folder, for example after you moved or renamed a repo, or started Claude in the wrong place.
 Type the folder (it must exist; `~` works) and press Enter.
+
+- **Tab** fills in the next folder whose name starts with what you've typed after the last `/`. Press it again to cycle through the other matches. Just after a `/`, it cycles through every folder there.
+  - In an empty field, Tab starts at your home folder (`~/`).
+  - Hidden folders are offered only once you've typed a `.`, as in the shell.
+  - Type `/` after a folder to move into it; typing anything else starts a new round of matches.
+- **Red text** shows what doesn't exist: the folder part if that folder is missing, otherwise the name if no folder starts with it.
+- A name with no `/` (such as `Documents`) means a folder in your home folder, for Tab, the red text and Enter alike.
 
 - Every working folder recorded in the transcript (`cwd`) is changed to the new folder.
   A subfolder the session changed into keeps its place if the same subfolder exists in the new folder; otherwise it becomes the new folder.

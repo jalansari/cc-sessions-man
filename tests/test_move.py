@@ -306,3 +306,46 @@ def test_a_session_started_during_the_move_is_left_alone(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="changed during the move"):
         move_session(s, dest, home)
     assert s.path.exists() and list((home / "projects" / project_dir_name(str(dest))).iterdir()) == []
+
+
+def test_tab_in_the_move_dialog_completes_folders(tmp_path, monkeypatch):
+    a = tmp_path / "a"
+    a.mkdir()
+    for name in ("proj-one", "proj-two"):
+        (tmp_path / "fakehome" / name).mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "fakehome"))
+    home, s = make_session(tmp_path, a, [a])
+
+    async def steps(app, pilot):
+        await pilot.press("m")
+        await pilot.pause()
+        field = app.screen.query_one("#new-folder", ui.PathInput)
+        field.value = ""
+        await pilot.press("tab")
+        assert field.value == "~/proj-one" and field.has_focus  # Tab completes, not moves focus
+        await pilot.press("tab")
+        assert field.value == "~/proj-two" and field.cursor_position == len("~/proj-two")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.rows[0].session.cwd == str(tmp_path / "fakehome" / "proj-two")
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_move_dialog_takes_a_bare_name_as_a_folder_in_home(tmp_path, monkeypatch):
+    a = tmp_path / "a"
+    a.mkdir()
+    (tmp_path / "fakehome" / "proj").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "fakehome"))
+    monkeypatch.chdir(tmp_path)  # where "proj" doesn't exist
+    home, s = make_session(tmp_path, a, [a])
+
+    async def steps(app, pilot):
+        await pilot.press("m")
+        await pilot.pause()
+        app.screen.query_one("#new-folder", ui.PathInput).value = "proj"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.rows[0].session.cwd == str(tmp_path / "fakehome" / "proj")
+
+    run_ui(home, monkeypatch, steps)

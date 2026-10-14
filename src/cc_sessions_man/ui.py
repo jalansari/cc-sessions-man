@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from rich.cells import cell_len
+from rich.highlighter import Highlighter
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -27,6 +28,7 @@ from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_l
 from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, refresh_interval_arg, short_path
 from .delete import trash_session
 from .move import move_session
+from .paths import Completer, problem_span, to_path
 from .rename import rename_session
 from .scan import Session, claude_env, live_sessions, parse_transcript, scan
 
@@ -253,6 +255,41 @@ class RenameSession(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class PathProblems(Highlighter):
+    """Show the part of a typed path that doesn't exist in red: the folder, or the name."""
+
+    def __init__(self):
+        self.last: tuple[str, tuple[int, int] | None] | None = None
+
+    def highlight(self, text: Text) -> None:
+        # Textual highlights on every render, including each cursor blink: only check the
+        # disk when the text has changed.
+        if self.last is None or self.last[0] != text.plain:
+            self.last = (text.plain, problem_span(text.plain))
+        if span := self.last[1]:
+            text.stylize("bold #f25f5c", *span)
+
+
+class PathInput(Input):
+    """A folder path input: Tab fills in the next matching folder, bad parts show in red."""
+
+    BINDINGS = [Binding("tab", "complete", "Complete folder", show=False)]  # instead of moving focus
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, highlighter=PathProblems(), **kwargs)
+        self.completer = Completer()
+
+    def action_complete(self) -> None:
+        value = self.completer.complete(self.value)
+        if value != self.value:
+            self.value = value
+            self.cursor_position = len(value)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.value != self.completer.filled:  # typed, not filled in by Tab: a new round
+            self.completer.reset()
+
+
 class MoveSession(ModalScreen[Path | None]):
     """Ask for the folder to move a session to. Enter moves, Esc cancels."""
 
@@ -272,12 +309,12 @@ class MoveSession(ModalScreen[Path | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="move-dialog"):
-            yield Label(f"Move session {self.session.session_id[:8]} to folder  (Enter = move, Esc = cancel)")
-            yield Input(value=short_path(self.session.cwd), id="new-folder")
+            yield Label(f"Move session {self.session.session_id[:8]} to folder  (Tab = complete, Enter = move, Esc = cancel)")
+            yield PathInput(value=short_path(self.session.cwd), id="new-folder")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        dest = Path(event.value.strip()).expanduser().resolve()
-        if not event.value.strip() or not dest.is_dir():
+        dest = to_path(event.value)  # a bare name is in home, as for Tab and the red text
+        if not event.value.strip() or dest is None or not dest.is_dir():
             self.notify(f"{event.value.strip() or 'That'} isn't an existing folder.", severity="warning")
             return
         self.dismiss(dest)
