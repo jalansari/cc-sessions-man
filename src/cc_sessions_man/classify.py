@@ -135,7 +135,7 @@ class Cache:
             self.data = {}
 
     def reload(self) -> None:
-        """Merge in labels saved by other runs (e.g. the CLI). In-memory labels win."""
+        """Merge in labels saved by other runs (e.g. the CLI). The newer label wins."""
         disk = self._read_disk()
         with self._lock:
             self.data = self._merge(disk)
@@ -179,9 +179,16 @@ class Cache:
         return data if isinstance(data, dict) else {}
 
     def _merge(self, disk: dict) -> dict:
-        """Disk entries plus ours, ours winning; minus anything we've dropped. Call under _lock."""
+        """Disk entries plus ours, minus anything we've dropped. Call under _lock.
+
+        Where both have a session, the label for the newer transcript (higher mtime)
+        wins; on a tie, ours does.
+        """
         merged = {k: v for k, v in disk.items() if k not in self._dropped}
-        merged.update(self.data)
+        for sid, mine in self.data.items():
+            theirs = merged.get(sid)
+            if not isinstance(theirs, dict) or mine.get("mtime", 0) >= theirs.get("mtime", 0):
+                merged[sid] = mine
         return merged
 
     def save(self) -> None:

@@ -98,3 +98,17 @@ def test_save_does_not_resurrect_dropped_labels(tmp_path):
     cache.put(sess("gone"), "action", "")  # re-classified later: allowed back
     cache.save()
     assert json.loads(path.read_text())["gone"]["label"] == "action"
+
+
+def test_merge_keeps_the_label_for_the_newer_transcript(tmp_path):
+    path = tmp_path / "labels.json"
+    ui_cache = Cache(path)
+    ui_cache.put(sess("x", mtime=1.0), "decision", "")  # labelled before the session continued
+    cli_cache = Cache(path)
+    cli_cache.put(sess("x", mtime=2.0), "done", "")  # CLI labelled the newer transcript
+    cli_cache.save()
+
+    ui_cache.reload()  # pressing r in the UI
+    assert ui_cache.get(sess("x", mtime=2.0))["label"] == "done"
+    ui_cache.save()
+    assert json.loads(path.read_text())["x"]["mtime"] == 2.0  # and a save doesn't undo it
