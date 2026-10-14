@@ -672,11 +672,14 @@ Each session gets exactly one status.
 
 # Development and quality
 
-- **Tests:** `uv run pytest` runs the suite (132 tests).
+- **Tests:** `uv run pytest` runs the suite (138 tests).
   - Refresh tests: `tests/test_refresh.py`
   - Move tests: `tests/test_move.py`
 - **Isolation:**
   - Tests never touch the real caches; an autouse fixture redirects them.
   - Tests that delete, rename or move use a fake config folder, and real sessions are never modified.
 - **Fixes:** each bug fix lands as its own commit, with a test that fails before the fix.
+- **Static checks:** black, isort (black profile) and flake8, all at line length 88.
+- **Continuous integration:** on every pull request, GitHub Actions checks formatting, import order and lint, then runs the tests, on Ubuntu 26.04 with the locked dependencies.
+- **Publishing:** a published GitHub release builds the package with `uv build` and uploads it to PyPI with twine.
 - **Documentation:** the README documents setup, usage, keys, options, caching, `claude` call isolation and limitations.

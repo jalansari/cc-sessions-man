@@ -1,0 +1,25 @@
+name: Publish
+on:
+  release:
+    types:
+      - published
+
+env:
+  TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+  TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+
+jobs:
+  package:
+    name: Publish
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build and publish
+        run: |
+          uv build \
+            && uvx twine upload dist/*

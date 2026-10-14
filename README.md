@@ -308,7 +308,14 @@ For AI search that's whatever parts of the transcripts Claude reads while search
 
 ```sh
 uv run pytest
+uv run black --check src tests benchmarks
+uv run isort --check-only src tests benchmarks
+uv run flake8 src tests benchmarks
 ```
+
+GitHub Actions runs the same checks and the tests on every pull request (`.github/workflows/pr.yml`).
+Publishing a GitHub release builds the package and uploads it to PyPI (`.github/workflows/publish.yml`), using the `TWINE_USERNAME` and `TWINE_PASSWORD` repository secrets.
+The release must have a new version in `pyproject.toml`: PyPI rejects a version it already has.
 
 ### Build and publish
 

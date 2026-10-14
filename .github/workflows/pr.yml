@@ -1,0 +1,33 @@
+name: PR
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  test:
+    name: Quality & Test
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Python venv
+        run: uv sync --locked
+
+      - name: Format (black)
+        run: uv run black --check --diff src tests benchmarks
+
+      - name: Imports (isort)
+        run: uv run isort --check-only --diff src tests benchmarks
+
+      - name: Lint (flake8)
+        run: uv run flake8 src tests benchmarks
+
+      - name: Tests
+        run: uv run pytest
