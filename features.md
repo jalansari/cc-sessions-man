@@ -564,7 +564,10 @@ Each session gets exactly one status.
 
 ## Requirements
 
-- **Python:** 3.14 or later, managed with `uv`.
+- **Python:** 3.14 or later.
+- **Installation:** from PyPI as `cc-sessions-man`, with `uv tool install` (recommended, as uv fetches Python 3.14 if needed), `pipx install` or Python 3.14's pip. Each installs the `cc-sessions` and `cc-sessions-ui` commands.
+  - The README covers pip's "externally managed environment" refusal on newer Linux systems (`--user --break-system-packages`), and upgrading with each method.
+  - From a clone, `uv run` runs the commands without installing.
 - **`claude` CLI:** on `PATH`, logged in.
 - **Linux:** for the PID-reuse check and the file lock; other systems fall back to the plain PID check.
 

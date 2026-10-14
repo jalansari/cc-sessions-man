@@ -7,6 +7,8 @@ Lists every Claude Code session on this machine and says whether it is finished 
 - [cc-sessions-man](#cc-sessions-man)
   - [What it reports](#what-it-reports)
   - [Requirements](#requirements)
+  - [Installation](#installation)
+    - [Upgrade](#upgrade)
   - [Run](#run)
   - [Terminal UI](#terminal-ui)
     - [AI search](#ai-search)
@@ -51,28 +53,61 @@ It returns a label and a short note on what is still outstanding.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/)
-- Python 3.14 or later. uv downloads it if it isn't installed.
+- Python 3.14 or later. With uv, it's downloaded for you if it isn't installed.
 - The `claude` CLI on your `PATH`, logged in. Classification runs `claude -p --model haiku`.
+
+## Installation
+
+Install it as a tool with [uv](https://docs.astral.sh/uv/) (recommended, as it fetches Python 3.14 if needed):
+
+```sh
+uv tool install cc-sessions-man
+```
+
+Or with [pipx](https://pipx.pypa.io/):
+
+```sh
+pipx install --python python3.14 cc-sessions-man
+```
+
+Or with pip, using Python 3.14's pip:
+
+```sh
+python3.14 -m pip install cc-sessions-man
+```
+
+On newer Linux systems, pip refuses to install into the system Python ("externally managed environment"). Install into your user site instead, at your own risk, with:
+
+```sh
+python3.14 -m pip install --user --break-system-packages cc-sessions-man
+```
+
+If `pip3` already runs Python 3.14 (check with `pip3 --version`), `pip3 install cc-sessions-man` works too.
+
+Each method installs two commands: `cc-sessions` (the CLI) and `cc-sessions-ui` (the terminal UI).
+
+### Upgrade
+
+```sh
+uv tool upgrade cc-sessions-man
+pipx upgrade cc-sessions-man
+python3.14 -m pip install --upgrade cc-sessions-man
+```
+
+Use the one that matches how you installed it, adding `--user --break-system-packages` to the pip command if you used them to install.
 
 ## Run
 
 ```sh
-cd cc-sessions-man
-uv run cc-sessions                 # all sessions, grouped
-uv run cc-sessions --pending       # only decision / action / interrupted
-uv run cc-sessions --days 7        # only the last week
-uv run cc-sessions -n 20           # only the 20 most recent
-uv run cc-sessions --json          # machine-readable, includes a resume command
-uv run cc-sessions --search "first session where /advisor was used"   # AI search of the transcripts
+cc-sessions                 # all sessions, grouped
+cc-sessions --pending       # only decision / action / interrupted
+cc-sessions --days 7        # only the last week
+cc-sessions -n 20           # only the 20 most recent
+cc-sessions --json          # machine-readable, includes a resume command
+cc-sessions --search "first session where /advisor was used"   # AI search of the transcripts
 ```
 
-To run it from anywhere, install it as a tool:
-
-```sh
-uv tool install --editable /path/to/cc-sessions-man
-cc-sessions --pending
-```
+From a clone of the repository, prefix the commands with `uv run` (for example `uv run cc-sessions`), or install the clone as an editable tool: `uv tool install --editable /path/to/cc-sessions-man`.
 
 To resume a session, use the directory and full session ID it prints:
 
@@ -83,9 +118,9 @@ cd ~/code/my-app && claude --resume 3f2a9c1e-7b4d-4e8a-9c6f-1d2e3f4a5b6c
 ## Terminal UI
 
 ```sh
-uv run cc-sessions-ui              # or: cc-sessions-ui, after `uv tool install`
-uv run cc-sessions-ui --no-llm     # cached labels only, no model calls
-uv run cc-sessions-ui --refresh-interval 60   # auto-refresh every minute; 0 turns it off
+cc-sessions-ui              # the terminal UI
+cc-sessions-ui --no-llm     # cached labels only, no model calls
+cc-sessions-ui --refresh-interval 60   # auto-refresh every minute; 0 turns it off
 ```
 
 The UI is built with [Textual](https://textual.textualize.io/).
@@ -259,8 +294,8 @@ When the directory isn't `~/.claude`, the tool passes it on to `claude`:
 - The resume commands the CLI prints start with `CLAUDE_CONFIG_DIR=...`.
 
 ```sh
-CLAUDE_CONFIG_DIR=~/.claude-work uv run cc-sessions-ui
-uv run cc-sessions --claude-home ~/.claude-work --pending
+CLAUDE_CONFIG_DIR=~/.claude-work cc-sessions-ui
+cc-sessions --claude-home ~/.claude-work --pending
 ```
 
 ## Cost and caching
