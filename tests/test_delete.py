@@ -518,3 +518,29 @@ def test_ui_rename_survives_transcript_vanishing(tmp_path, monkeypatch):
 
     run_ui(home, monkeypatch, steps)
     assert notices == ["Renamed, but the transcript has since disappeared."]
+
+
+def test_classifying_set_is_only_changed_on_the_main_thread(tmp_path, monkeypatch):
+    import threading
+
+    import cc_sessions_man.classify as classify_mod
+
+    home = make_home(tmp_path, ["aaa", "bbb"])
+    monkeypatch.setattr(classify_mod, "_run_claude", lambda prompt, model: [])
+    monkeypatch.setattr(ui, "Cache", lambda _p: Cache(home / "cache.json"))
+    writers = []
+
+    class Watched(ui.SessionsApp):
+        def __setattr__(self, name, value):
+            if name == "classifying":
+                writers.append(threading.current_thread() is threading.main_thread())
+            super().__setattr__(name, value)
+
+    async def go():
+        app = Watched(home, "haiku", use_llm=True)
+        async with app.run_test(size=(160, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+    asyncio.run(go())
+    assert writers and all(writers)

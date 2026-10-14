@@ -295,10 +295,10 @@ class SessionsApp(App[Session | None]):
         sessions = scan(self.claude_home)
         # One split, used both to mark rows "Classifying…" and to choose what to send.
         cached, todo = self.cache.partition(sessions)
-        if self.use_llm:
-            self.classifying = {s.session_id for s in todo}
         # Show the list straight away; unclassified rows fill in as batches come back.
-        self.call_from_thread(self.show, sessions, cached)
+        # The classifying set is handed to the main thread with it, which owns that state.
+        queued = {s.session_id for s in todo} if self.use_llm else set()
+        self.call_from_thread(self.show, sessions, cached, queued)
         if not (self.use_llm and todo):
             return
         self.call_from_thread(self.set_status, f"Classifying 0/{len(todo)} with {self.model}…")
@@ -334,7 +334,9 @@ class SessionsApp(App[Session | None]):
             left.append(f"  —  {self.sub_title}", style="dim")
         self.query_one(TitleBar).show(left, f"{len(self.marked)} marked" if self.marked else "")
 
-    def show(self, sessions: list[Session], labels: dict[str, dict]) -> None:
+    def show(self, sessions: list[Session], labels: dict[str, dict], classifying: set[str] | None = None) -> None:
+        if classifying is not None:
+            self.classifying = classifying
         self.rows = [Row(s, labels) for s in sessions]
         self.marked &= {s.session_id for s in sessions}
         self.render_table()
