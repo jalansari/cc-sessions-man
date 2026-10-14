@@ -9,12 +9,12 @@ from cc_sessions_man.classify import Cache
 from cc_sessions_man.scan import RUNNING, parse_transcript
 
 
-def make_home(tmp_path, ids):
+def make_home(tmp_path, ids, cwd="/w"):
     proj = tmp_path / "projects" / "-w"
     proj.mkdir(parents=True)
     for i, sid in enumerate(ids):
         (proj / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
-            {"type": "user", "message": {"content": f"prompt {sid}"}, "cwd": "/w", "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"},
+            {"type": "user", "message": {"content": f"prompt {sid}"}, "cwd": str(cwd), "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"},
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}, "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:30Z"},
         ]))
         (proj / sid / "subagents").mkdir(parents=True)
@@ -337,3 +337,39 @@ def test_ui_failed_batch_shows_error_and_retries_on_refresh(tmp_path, monkeypatc
     assert not (failed & cached)  # errors are never cached...
     assert set(second.values()) == {"done"}  # ...so refresh retried and fixed them
     assert sum(1 for title, _ in notices if title == "Classification failed") == 1
+
+
+def test_ui_resume_refuses_when_folder_is_gone(tmp_path, monkeypatch):
+    notices = []
+
+    def attempt(home):
+        async def go():
+            app = ui.SessionsApp(home, "haiku", use_llm=False)
+            app.notify = lambda msg, **kw: notices.append(kw.get("title"))
+            async with app.run_test(size=(160, 40)) as pilot:
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+            return app.return_value
+
+        return asyncio.run(go())
+
+    monkeypatch.setattr(ui, "Cache", lambda _p: Cache(tmp_path / "cache.json"))
+    gone = make_home(tmp_path / "a", ["aaa"], cwd=tmp_path / "deleted-project")
+    assert attempt(gone) is None and notices == ["Can't resume"]
+
+    project = tmp_path / "project"
+    project.mkdir()
+    there = make_home(tmp_path / "b", ["bbb"], cwd=project)
+    assert attempt(there).session_id == "bbb"
+
+
+def test_main_refuses_to_resume_into_missing_folder(tmp_path, monkeypatch, capsys):
+    from cc_sessions_man.scan import Session
+
+    s = Session(session_id="x", path=tmp_path / "x.jsonl", mtime=0, cwd=str(tmp_path / "gone"))
+    monkeypatch.setattr(ui.SessionsApp, "run", lambda self: s)
+    monkeypatch.setattr(ui.os, "execve", lambda *a: pytest.fail("must not exec claude"))
+    assert ui.main(["--no-llm", "--claude-home", str(tmp_path)]) == 1
+    assert "no longer exists" in capsys.readouterr().err

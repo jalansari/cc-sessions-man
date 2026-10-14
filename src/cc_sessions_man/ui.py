@@ -432,6 +432,14 @@ class SessionsApp(App[Session | None]):
         if r.group == "running":
             self.notify("That session is still open in another terminal.", severity="warning")
             return
+        if not r.session.cwd or not os.path.isdir(r.session.cwd):
+            # claude --resume looks the session up by folder; from anywhere else it either
+            # can't find it or resumes in the wrong working tree.
+            self.notify(
+                f"Its folder {short_path(r.session.cwd) or '(unknown)'} no longer exists, so it can't be resumed.",
+                title="Can't resume", severity="error",
+            )
+            return
         self.exit(r.session)
 
     def action_toggle_mark(self) -> None:
@@ -560,12 +568,14 @@ def main(argv=None) -> int:
     session = SessionsApp(args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs).run()
     if session is None:
         return 0
+    if not session.cwd or not os.path.isdir(session.cwd):
+        print(f"Can't resume {session.session_id}: its folder {session.cwd or '(unknown)'} no longer exists.", file=sys.stderr)
+        return 1
     claude = shutil.which("claude")
     if not claude:
         print("claude is not on PATH", file=sys.stderr)
         return 1
-    if session.cwd and os.path.isdir(session.cwd):
-        os.chdir(session.cwd)
+    os.chdir(session.cwd)
     print(f"Resuming {session.session_id} in {short_path(os.getcwd())}…")
     os.execve(claude, [claude, "--resume", session.session_id], claude_env(args.claude_home))
 
