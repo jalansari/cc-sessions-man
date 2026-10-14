@@ -326,3 +326,14 @@ def test_concurrent_scan_cache_saves_do_not_collide(tmp_path):
     assert errors == []
     assert json.loads(path.read_text())["version"] >= 1  # a complete file, not a mix
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_malformed_scan_cache_is_ignored(tmp_path):
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    write(proj / "a.jsonl", [user("one"), assistant([{"type": "text", "text": "done"}])])
+    cache = tmp_path / "scan.json"
+    for junk in ("[]", "null", "7", json.dumps({"version": 1, "entries": []}),
+                 json.dumps({"version": 1, "entries": {str(proj / "a.jsonl"): "nope"}})):
+        cache.write_text(junk)
+        assert [s.session_id for s in scan(tmp_path, cache)] == ["a"]

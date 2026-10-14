@@ -203,11 +203,22 @@ def _from_cache(d: dict | None) -> Session | None:
 
 
 def _load_scan_cache(path: Path) -> dict:
+    """Cached entries by transcript path; {} if the file is missing, stale or malformed."""
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
-    return data.get("entries", {}) if data.get("version") == SCAN_CACHE_VERSION else {}
+    if not isinstance(data, dict) or data.get("version") != SCAN_CACHE_VERSION:
+        return {}
+    entries = data.get("entries")
+    if not isinstance(entries, dict):
+        return {}
+    # Drop malformed entries so those transcripts are simply parsed again.
+    return {
+        k: v for k, v in entries.items()
+        if isinstance(v, dict) and {"mtime", "size", "session"} <= v.keys()
+        and (v["session"] is None or isinstance(v["session"], dict))
+    }
 
 
 def _save_scan_cache(path: Path, entries: dict) -> None:
