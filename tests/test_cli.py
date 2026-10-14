@@ -53,3 +53,14 @@ def test_cli_reports_failed_batches_as_error(tmp_path, monkeypatch, capsys):
     assert {r["group"] for r in rows} == {"error"}
     assert all(r["detail"] == "rate limited" and r["status_rank"] == 6 for r in rows)
     assert not cli.CACHE_PATH.exists() or json.loads(cli.CACHE_PATH.read_text()) == {}
+
+
+def test_short_path_only_abbreviates_inside_home(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: Path("/home/ann")))
+    assert cli.short_path("/home/ann") == "~"
+    assert cli.short_path("/home/ann/Documents/x") == "~/Documents/x"
+    assert cli.short_path("/home/annbackup/proj") == "/home/annbackup/proj"
+    assert cli.short_path("/home/ann2/x") == "/home/ann2/x"
+    assert cli.short_path("") == ""

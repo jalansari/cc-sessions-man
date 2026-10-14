@@ -59,8 +59,11 @@ def detail_of(s, label_info: dict | None) -> str:
 
 
 def short_path(p: str) -> str:
+    """Abbreviate the home folder to ~, only for the folder itself or paths inside it."""
     home = str(Path.home())
-    return "~" + p[len(home):] if p.startswith(home) else p
+    if p == home or p.startswith(home + os.sep):
+        return "~" + p[len(home):]
+    return p
 
 
 def config_prefix(home: Path) -> str:
