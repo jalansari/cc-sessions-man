@@ -124,7 +124,7 @@ The confirmation dialog opens with Cancel selected, so pressing Enter by mistake
 | `-s, --show GROUP` | Only this group; repeatable. Groups: `running`, `decision`, `action`, `interrupted`, `optional`, `done`, `unclassified` |
 | `--pending` | Same as `-s decision -s action -s interrupted` |
 | `--no-llm` | Don't call the model; use cached labels only. Uncached sessions show as "Ended (not classified)" |
-| `--refresh` | Ignore cached labels and classify again |
+| `--refresh` | Classify the listed sessions again, ignoring their cached labels. With `-n` or `--days`, other sessions keep their labels |
 | `--model M` | Model alias or ID (default `haiku`) |
 | `--batch-size N` | Sessions per `claude` call (default 5) |
 | `-j, --jobs N` | Parallel `claude` calls (default 16). They share your account's rate limits with other Claude sessions |

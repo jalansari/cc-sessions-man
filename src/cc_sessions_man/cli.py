@@ -82,7 +82,7 @@ def parse_args(argv=None):
     )
     p.add_argument("--pending", action="store_true", help="shorthand for --show decision --show action --show interrupted")
     p.add_argument("--no-llm", action="store_true", help="skip the model; use cached labels only")
-    p.add_argument("--refresh", action="store_true", help="ignore cached labels and re-classify")
+    p.add_argument("--refresh", action="store_true", help="ignore cached labels for the listed sessions and re-classify them")
     p.add_argument("--model", default="haiku", help="model alias or ID for classification (default: haiku)")
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
     p.add_argument("-j", "--jobs", type=int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
@@ -105,7 +105,10 @@ def main(argv=None) -> int:
 
     cache = Cache(CACHE_PATH)
     if args.refresh:
-        cache.data = {}
+        # Only forget the sessions this run will classify again; filters like -n or
+        # --days must not throw away everyone else's labels.
+        for s in sessions:
+            cache.drop(s.session_id)
     if args.no_llm:
         labels = {s.session_id: h for s in sessions if s.state == ENDED and (h := cache.get(s))}
     else:
