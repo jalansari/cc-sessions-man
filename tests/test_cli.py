@@ -64,3 +64,18 @@ def test_short_path_only_abbreviates_inside_home(monkeypatch):
     assert cli.short_path("/home/annbackup/proj") == "/home/annbackup/proj"
     assert cli.short_path("/home/ann2/x") == "/home/ann2/x"
     assert cli.short_path("") == ""
+
+
+def test_batch_size_and_jobs_must_be_positive(tmp_path, capsys):
+    import pytest
+
+    home = make_home(tmp_path, ["a"])
+    for bad in (["--batch-size", "0"], ["-j", "0"], ["--jobs", "-3"], ["--batch-size", "two"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["--claude-home", str(home), *bad])
+        assert exc.value.code == 2  # argparse usage error, not a traceback
+        assert "must be 1 or more" in capsys.readouterr().err or bad[1] == "two"
+
+    from cc_sessions_man.classify import classify
+    with pytest.raises(ValueError):
+        classify([], Cache(tmp_path / "c.json"), batch_size=0)

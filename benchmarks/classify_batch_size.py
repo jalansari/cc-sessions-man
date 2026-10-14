@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from cc_sessions_man.classify import LABELS, batch_prompt, call_claude
+from cc_sessions_man.cli import positive_int
 from cc_sessions_man.scan import CLAUDE_HOME, ENDED, Session, scan
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -103,10 +104,10 @@ def pct(v):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--sample", type=int, default=60, help="sessions to classify per run (default: 60)")
-    p.add_argument("--batch-sizes", type=int, nargs="+", default=[1, 5, 10, 20, 40])
-    p.add_argument("--jobs", type=int, nargs="+", default=[4, 8], help="parallel calls to try (default: 4 8)")
-    p.add_argument("--reference-jobs", type=int, default=8, help="parallel calls for the batch-1 reference runs")
+    p.add_argument("--sample", type=positive_int, default=60, help="sessions to classify per run (default: 60)")
+    p.add_argument("--batch-sizes", type=positive_int, nargs="+", default=[1, 5, 10, 20, 40])
+    p.add_argument("--jobs", type=positive_int, nargs="+", default=[4, 8], help="parallel calls to try (default: 4 8)")
+    p.add_argument("--reference-jobs", type=positive_int, default=8, help="parallel calls for the batch-1 reference runs")
     p.add_argument("--model", default="haiku")
     p.add_argument("--seed", type=int, default=1, help="random seed for picking the sample")
     p.add_argument("--no-reference", action="store_true", help="skip the batch-1 reference runs (speed only, no accuracy)")

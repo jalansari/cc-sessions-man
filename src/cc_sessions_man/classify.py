@@ -225,6 +225,8 @@ def classify(
     with the labels it produced, the sessions it covered (including any left unlabelled),
     and the exception if the call failed (otherwise None).
     """
+    if batch_size < 1 or jobs < 1:
+        raise ValueError(f"batch_size and jobs must be 1 or more (got {batch_size}, {jobs})")
     results: dict[str, dict] = {}
     batches = [todo[i : i + batch_size] for i in range(0, len(todo), batch_size)]
     if progress and batches:

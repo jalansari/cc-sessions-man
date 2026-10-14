@@ -78,12 +78,23 @@ def resume_command(home: Path, session_id: str, cwd: str) -> str:
     return f"cd {shlex.quote(cwd)} && {config_prefix(home)}claude --resume {session_id}"
 
 
+def positive_int(value: str) -> int:
+    """argparse type: an integer of 1 or more."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number") from None
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or more, got {n}")
+    return n
+
+
 def add_common_args(p: argparse.ArgumentParser) -> None:
     """Options shared by cc-sessions and cc-sessions-ui."""
     p.add_argument("--no-llm", action="store_true", help="don't call the model; use cached labels only")
     p.add_argument("--model", default="haiku", help="model alias or ID for classification (default: haiku)")
-    p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
-    p.add_argument("-j", "--jobs", type=int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
+    p.add_argument("--batch-size", type=positive_int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
+    p.add_argument("-j", "--jobs", type=positive_int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
     p.add_argument(
         "--claude-home", type=home_arg, default=CLAUDE_HOME,
         help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
