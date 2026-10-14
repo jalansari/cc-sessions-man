@@ -295,3 +295,45 @@ def test_ui_refresh_is_refused_while_classifying(tmp_path, monkeypatch):
     assert refused is True and after is False
     assert len(calls) == 1  # no second classify run; the refresh after finishing found it all cached
     assert groups == ["done"] * 3
+
+
+def test_ui_failed_batch_shows_error_and_retries_on_refresh(tmp_path, monkeypatch):
+    import cc_sessions_man.classify as classify_mod
+
+    home = make_home(tmp_path, [f"s{i}" for i in range(4)])
+    attempts = []
+
+    def flaky_run(prompt, model):
+        ids = [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+        attempts.append(ids)
+        if "s0" in ids and sum("s0" in a for a in attempts) == 1:  # first try at s0's batch fails
+            raise RuntimeError("Not logged in · Please run /login\nmore detail")
+        return [{"id": i, "label": "done", "pending": ""} for i in ids]
+
+    monkeypatch.setattr(classify_mod, "_run_claude", flaky_run)
+    monkeypatch.setattr(ui, "Cache", lambda _p: Cache(home / "cache.json"))
+    notices = []
+
+    async def go():
+        app = ui.SessionsApp(home, "haiku", use_llm=True, batch_size=2)
+        app.notify = lambda msg, **kw: notices.append((kw.get("title"), msg))
+        async with app.run_test(size=(160, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            first = {r.session.session_id: (r.group, r.detail) for r in app.rows}
+            cached = set(json.loads((home / "cache.json").read_text()))
+            await pilot.press("r")  # retry
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            second = {r.session.session_id: r.group for r in app.rows}
+            return first, cached, second
+
+    first, cached, second = asyncio.run(go())
+    failed = {sid for sid, (g, _) in first.items() if g == "error"}
+    assert "s0" in failed and len(failed) == 2  # the whole batch of 2
+    assert all(first[sid][1] == "Not logged in · Please run /login" for sid in failed)
+    assert all(g == "done" for sid, (g, _) in first.items() if sid not in failed)
+    assert not (failed & cached)  # errors are never cached...
+    assert set(second.values()) == {"done"}  # ...so refresh retried and fixed them
+    assert sum(1 for title, _ in notices if title == "Classification failed") == 1

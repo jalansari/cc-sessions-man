@@ -81,6 +81,12 @@ def batch_prompt(batch: list[Session]) -> str:
     return "Classify these sessions:\n\n" + "\n\n".join(parts)
 
 
+def error_labels(batch: list[Session], err: Exception, skip=()) -> dict[str, dict]:
+    """In-memory "error" labels for a failed batch. Never cached, so they're retried next run."""
+    msg = (str(err).strip().splitlines() or [type(err).__name__])[0][:200]
+    return {s.session_id: {"label": "error", "pending": msg} for s in batch if s.session_id not in skip}
+
+
 def call_claude(prompt: str, model: str) -> dict:
     """One headless classification call. Returns claude's full JSON result (labels, cost, timing)."""
     cmd = [
@@ -173,8 +179,9 @@ def classify(
 ) -> dict[str, dict]:
     """Label every session in the ENDED state. Returns {session_id: {label, pending}}.
 
-    `on_batch(new_labels, batch)` is called as each batch finishes, in completion order,
-    with the labels it produced and the sessions it covered (including any left unlabelled).
+    `on_batch(new_labels, batch, err)` is called as each batch finishes, in completion order,
+    with the labels it produced, the sessions it covered (including any left unlabelled),
+    and the exception if the call failed (otherwise None).
     """
     results: dict[str, dict] = {}
     todo = []
@@ -212,5 +219,5 @@ def classify(
             results.update(new)
             cache.save()  # keep progress if a later batch fails or is interrupted
             if on_batch:
-                on_batch(new, batch)
+                on_batch(new, batch, err)
     return results

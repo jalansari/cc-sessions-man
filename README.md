@@ -14,7 +14,8 @@ The gaps in the numbering leave room for new statuses, and Done stays last at 99
 | 2 | Needs your decision | Claude asked a question or wants approval | Haiku |
 | 3 | Interrupted | Ended on your prompt with no reply, or partway through a tool call | Transcript structure |
 | 4 | Offered extras | Finished, with optional follow-ups you can ignore | Haiku |
-| 5 | Ended (not classified) | Not labelled yet (`--no-llm`, or a failed model call) | — |
+| 5 | Ended (not classified) | Not labelled yet (`--no-llm`, or the model skipped it) | — |
+| 6 | Classification failed | The `claude -p` call for its batch failed (not logged in, rate limited, timed out). The error shows in the details panel and `--json` output. Never cached, so it's retried on refresh (`r`) or the next run | — |
 | 99 | Done | Nothing left to do | Haiku |
 
 Ranks are defined in `STATUS_RANK` in `src/cc_sessions_man/cli.py`.

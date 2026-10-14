@@ -15,7 +15,7 @@ from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
-from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify
+from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .cli import CACHE_PATH, GROUPS, STATUS_RANK, detail_of, group_of, short_path
 from .delete import trash_session
 from .rename import rename_session
@@ -31,6 +31,7 @@ GROUP_STYLE = {
     "optional": "#56b6c2",
     "done": "dim",
     "unclassified": "dim italic",
+    "error": "bold #ff8c42",
 }
 
 COLUMNS = [("status", "Status"), ("started", "Started"), ("last", "Last activity"), ("title", "Title"), ("cwd", "Folder")]
@@ -220,6 +221,7 @@ class SessionsApp(App[Session | None]):
         self.sort_column = "status"
         self.sort_reverse = False
         self.loading = False  # a scan/classify worker is running
+        self.error_notified = False  # shown the "classification failed" notice this run
 
     def compose(self) -> ComposeResult:
         yield TitleBar()
@@ -244,6 +246,7 @@ class SessionsApp(App[Session | None]):
         # Only one load at a time: a thread worker can't be cancelled while it waits on
         # claude, so a second run would classify the same sessions twice.
         self.loading = True
+        self.error_notified = False
         self.load()
 
     def load_finished(self) -> None:
@@ -270,15 +273,23 @@ class SessionsApp(App[Session | None]):
             return
         self.call_from_thread(self.set_status, f"Classifying 0/{len(todo)} with {self.model}…")
 
-        def on_batch(new: dict[str, dict], batch: list[Session]) -> None:
-            self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(todo))
+        def on_batch(new: dict[str, dict], batch: list[Session], err: Exception | None) -> None:
+            if err:
+                new = {**new, **error_labels(batch, err, skip=new)}
+            self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(todo), err)
 
         classify(sessions, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
 
-    def apply_batch(self, new: dict[str, dict], batch_ids: list[str], total: int) -> None:
+    def apply_batch(
+        self, new: dict[str, dict], batch_ids: list[str], total: int, err: Exception | None = None
+    ) -> None:
         for r in self.rows:
             if r.session.session_id in new:
                 r.update(new)
+        if err and not self.error_notified:
+            self.error_notified = True  # once per run; the rows carry the detail
+            msg = next(iter(new.values()))["pending"] if new else str(err)
+            self.notify(f"{msg}\nPress r to retry when it finishes.", title="Classification failed", severity="error", timeout=10)
         self.classifying -= set(batch_ids)
         self.set_status(f"Classifying {total - len(self.classifying)}/{total} with {self.model}…")
         self.render_table()
@@ -357,7 +368,7 @@ class SessionsApp(App[Session | None]):
         counts = {g: sum(r.group == g for r in self.rows) for g in GROUPS}
         # self.title also sets the terminal window title.
         self.title = f"Claude Code sessions: {len(rows)} shown, " + ", ".join(
-            f"{GROUPS[g].lower()} {n}" for g, n in counts.items() if n and g in PENDING | {"running"}
+            f"{GROUPS[g].lower()} {n}" for g, n in counts.items() if n and g in PENDING | {"running", "error"}
         )
         self.update_title_bar()
         self.update_detail()

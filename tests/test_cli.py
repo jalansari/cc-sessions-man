@@ -39,3 +39,17 @@ def test_refresh_with_limit_keeps_other_labels(tmp_path, monkeypatch, capsys):
     saved = json.loads(cli.CACHE_PATH.read_text())
     assert saved["new"]["label"] == "done"  # re-classified
     assert saved["old"]["label"] == "decision"  # outside the filter: untouched
+
+
+def test_cli_reports_failed_batches_as_error(tmp_path, monkeypatch, capsys):
+    home = make_home(tmp_path, ["a", "b"])
+
+    def boom(prompt, model):
+        raise RuntimeError("rate limited")
+
+    monkeypatch.setattr(classify_mod, "_run_claude", boom)
+    cli.main(["--claude-home", str(home), "--json"])
+    rows = json.loads(capsys.readouterr().out)
+    assert {r["group"] for r in rows} == {"error"}
+    assert all(r["detail"] == "rate limited" and r["status_rank"] == 6 for r in rows)
+    assert not cli.CACHE_PATH.exists() or json.loads(cli.CACHE_PATH.read_text()) == {}
