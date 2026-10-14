@@ -2,6 +2,24 @@
 
 Lists every Claude Code session on this machine and says whether it is finished or waiting on you.
 
+- [cc-sessions-man](#cc-sessions-man)
+  - [What it reports](#what-it-reports)
+  - [Requirements](#requirements)
+  - [Run](#run)
+  - [Terminal UI](#terminal-ui)
+    - [AI search](#ai-search)
+    - [Renaming sessions](#renaming-sessions)
+    - [Moving sessions](#moving-sessions)
+    - [Deleting sessions](#deleting-sessions)
+  - [CLI options](#cli-options)
+  - [Using another Claude config directory](#using-another-claude-config-directory)
+  - [Cost and caching](#cost-and-caching)
+  - [How the `claude` calls are isolated](#how-the-claude-calls-are-isolated)
+  - [Limits](#limits)
+  - [Development](#development)
+    - [Benchmarking classification](#benchmarking-classification)
+
+
 ## What it reports
 
 Each session lands in one group. Each group has a rank, and lower ranks sort first.
