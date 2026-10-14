@@ -148,3 +148,46 @@ def test_cache_file_that_is_not_an_object_starts_empty(tmp_path):
         assert cache.data == {}
         cached, todo = cache.partition([Session(session_id="a", path=Path("a"), mtime=1.0, state=ENDED)])
         assert (cached, len(todo)) == ({}, 1)
+
+
+def test_save_does_not_block_reads_during_file_io(tmp_path, monkeypatch):
+    import time
+
+    cache = Cache(tmp_path / "labels.json")
+    s = sess("a")
+    cache.put(s, "done", "")
+    in_io, release = threading.Event(), threading.Event()
+    real_read = Cache._read_disk
+
+    def slow_read(self):
+        in_io.set()
+        release.wait(5)  # pretend the disk is slow
+        return real_read(self)
+
+    monkeypatch.setattr(Cache, "_read_disk", slow_read)
+    saver = threading.Thread(target=cache.save)
+    saver.start()
+    assert in_io.wait(5)
+    t0 = time.monotonic()
+    assert cache.get(s)["label"] == "done"  # the UI thread's read
+    waited = time.monotonic() - t0
+    release.set()
+    saver.join()
+    assert waited < 0.5
+
+
+def test_concurrent_saves_in_one_process_still_merge(tmp_path):
+    path = tmp_path / "labels.json"
+    caches = [Cache(path) for _ in range(4)]
+    threads = []
+    for n, c in enumerate(caches):
+        def work(c=c, n=n):
+            for i in range(50):
+                c.put(sess(f"{n}-{i}"), "done", "")
+                c.save()
+        threads.append(threading.Thread(target=work))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(json.loads(path.read_text())) == 200  # nobody's labels lost

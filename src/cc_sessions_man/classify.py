@@ -191,12 +191,17 @@ class Cache:
     def save(self) -> None:
         """Write our labels, keeping any that another process (CLI, second UI) saved meanwhile."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # The thread lock keeps this process's saves in order; the file lock makes the
-        # read-merge-write atomic against other processes.
-        with self._lock, open(self.path.with_name(self.path.name + ".lock"), "w") as lockfile:
+        # The file lock makes the read-merge-write atomic against other processes, and
+        # against this process's other threads (each open() gets its own flock). The
+        # thread lock is held only for the in-memory merge, never during file I/O, so the
+        # UI thread's get() doesn't wait on disk.
+        with open(self.path.with_name(self.path.name + ".lock"), "w") as lockfile:
             fcntl.flock(lockfile, fcntl.LOCK_EX)
-            self.data = self._merge(self._read_disk())
-            payload = json.dumps(self.data, indent=1)
+            disk = self._read_disk()
+            with self._lock:
+                self.data = self._merge(disk)
+                snapshot = dict(self.data)
+            payload = json.dumps(snapshot, indent=1)
             with tempfile.NamedTemporaryFile(
                 "w", dir=self.path.parent, prefix=self.path.name, suffix=".tmp", delete=False
             ) as fh:
