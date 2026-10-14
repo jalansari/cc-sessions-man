@@ -187,3 +187,23 @@ def test_relative_config_dir_is_made_absolute(tmp_path, monkeypatch):
     # Even a relative Path handed in directly comes out absolute where claude sees it.
     assert claude_env(Path("alt-claude"))["CLAUDE_CONFIG_DIR"] == str(tmp_path / "alt-claude")
     assert f"CLAUDE_CONFIG_DIR={tmp_path / 'alt-claude'} claude" in resume_command(Path("alt-claude"), "id", "/w")
+
+
+def test_scan_cache_is_kept_per_home(tmp_path, monkeypatch):
+    import cc_sessions_man.scan as scan_mod
+
+    homes = []
+    for name in ("home-a", "home-b"):
+        proj = tmp_path / name / "projects" / "-w"
+        proj.mkdir(parents=True)
+        write(proj / f"{name}.jsonl", [user("hi"), assistant([{"type": "text", "text": "done"}])])
+        homes.append(tmp_path / name)
+
+    parsed = []
+    real = scan_mod.parse_transcript
+    monkeypatch.setattr(scan_mod, "parse_transcript", lambda p: parsed.append(p.stem) or real(p))
+
+    for home in homes + homes:  # a, b, a, b with the default cache location
+        scan(home)
+    assert parsed == ["home-a", "home-b"]  # second round fully cached for both
+    assert scan_mod.scan_cache_path(homes[0]) != scan_mod.scan_cache_path(homes[1])

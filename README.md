@@ -154,7 +154,7 @@ uv run cc-sessions --claude-home ~/.claude-work --pending
 
 Two caches live in `~/.cache/cc-sessions-man/` (or `$XDG_CACHE_HOME/cc-sessions-man/`):
 
-- `scan.json` holds a summary of each transcript: title, times, state, and the last prompt and reply.
+- `scan-<hash>.json` holds a summary of each transcript, one file per Claude config directory: title, times, state, and the last prompt and reply.
   A transcript is only read again when its size or modification time changes.
   This keeps startup fast; reading all transcripts in full takes seconds.
 - `labels.json` holds the model's label for each session, keyed by session ID and the transcript's modification time.

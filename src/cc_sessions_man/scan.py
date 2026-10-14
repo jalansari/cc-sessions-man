@@ -1,5 +1,6 @@
 """Read Claude Code's on-disk state: live session files and saved transcripts."""
 
+import hashlib
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -32,7 +33,6 @@ def home_arg(value: str) -> Path:
 
 CLAUDE_HOME = claude_home_from_env()
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", "").strip() or Path.home() / ".cache") / "cc-sessions-man"
-SCAN_CACHE_PATH = CACHE_DIR / "scan.json"
 SCAN_CACHE_VERSION = 1  # bump when Session fields or parsing change
 
 # Structural states, decided without a model.
@@ -182,14 +182,20 @@ def _save_scan_cache(path: Path, entries: dict) -> None:
 _DEFAULT = object()
 
 
+def scan_cache_path(home: Path) -> Path:
+    """One scan cache per Claude home, so switching --claude-home doesn't evict the other."""
+    digest = hashlib.sha256(str(home.expanduser().resolve()).encode()).hexdigest()[:12]
+    return CACHE_DIR / f"scan-{digest}.json"  # CACHE_DIR looked up now, so tests can redirect it
+
+
 def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
     """All main-thread sessions, newest first. Subagent transcripts are skipped.
 
-    Parsed transcripts are cached by path (default SCAN_CACHE_PATH), and only re-read
+    Parsed transcripts are cached by path (default: one file per home), and only re-read
     when their size or mtime changes. Pass cache_path=None to parse everything.
     """
     if cache_path is _DEFAULT:
-        cache_path = SCAN_CACHE_PATH  # looked up at call time, so tests can redirect it
+        cache_path = scan_cache_path(home)
     live = live_sessions(home)
     old = _load_scan_cache(cache_path) if cache_path else {}
     entries = {}
