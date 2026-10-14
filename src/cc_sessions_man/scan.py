@@ -80,12 +80,17 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
     return live
 
 
+def _str(value) -> str:
+    """A transcript field as a string; anything else (null, numbers, objects) becomes ""."""
+    return value if isinstance(value, str) else ""
+
+
 def _text(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         return "\n".join(
-            b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+            _str(b.get("text")) for b in content if isinstance(b, dict) and b.get("type") == "text"
         )
     return ""
 
@@ -114,19 +119,22 @@ def parse_transcript(path: Path) -> Session | None:
                 e = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(e, dict):  # valid JSON but not an entry, e.g. a truncated write
+                continue
             t = e.get("type")
             if t == "custom-title":
-                s.title = e.get("customTitle") or s.title
+                s.title = _str(e.get("customTitle")) or s.title
             elif t == "ai-title" and not s.title:
-                s.title = e.get("aiTitle") or ""
+                s.title = _str(e.get("aiTitle"))
             elif t == "summary" and not s.title:
-                s.title = e.get("summary") or ""
+                s.title = _str(e.get("summary"))
             elif t == "last-prompt":
-                last_prompt_fallback = e.get("lastPrompt") or last_prompt_fallback
+                last_prompt_fallback = _str(e.get("lastPrompt")) or last_prompt_fallback
             if t not in ("user", "assistant") or e.get("isSidechain") or e.get("isMeta"):
                 continue
-            s.cwd = e.get("cwd") or s.cwd
-            content = e.get("message", {}).get("content")
+            s.cwd = _str(e.get("cwd")) or s.cwd
+            message = e.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
             if t == "user":
                 if _is_tool_result(content):
                     last_kind = "tool_result"
@@ -146,7 +154,7 @@ def parse_transcript(path: Path) -> Session | None:
                         continue  # thinking-only chunk
                     last_kind = "assistant"
                     s.last_assistant_text = text
-            s.last_timestamp = e.get("timestamp") or s.last_timestamp
+            s.last_timestamp = _str(e.get("timestamp")) or s.last_timestamp
             s.started = s.started or s.last_timestamp
     if last_kind is None:
         return None
@@ -224,6 +232,11 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
                 changed = True
         except FileNotFoundError:
             # Deleted between glob() and reading it (another viewer, or Claude Code cleanup).
+            changed = True
+            continue
+        except Exception:
+            # A transcript in a shape we don't understand: skip it rather than let one
+            # file hide every session. Not cached, so it's tried again next scan.
             changed = True
             continue
         entries[key] = hit

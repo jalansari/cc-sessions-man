@@ -230,3 +230,39 @@ def test_live_sessions_handles_bad_files_and_other_users(tmp_path, monkeypatch):
 
     monkeypatch.setattr("os.kill", fake_kill)
     assert set(live_sessions(tmp_path)) == {"theirs"}
+
+
+def test_odd_transcript_lines_are_skipped(tmp_path):
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    (proj / "odd.jsonl").write_text("\n".join([
+        "null", '"just a string"', "[1, 2]", "42",
+        json.dumps({"type": "user", "message": None, "cwd": "/w", "timestamp": "2026-10-01T10:00:00Z"}),
+        json.dumps({"type": "custom-title", "customTitle": 7}),
+        json.dumps({"type": "user", "message": {"content": "real prompt"}, "cwd": None, "timestamp": "2026-10-01T10:00:00Z"}),
+        json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": None}, {"type": "text", "text": "ok"}]},
+                    "timestamp": "2026-10-01T10:01:00Z"}),
+    ]) + "\n")
+    write(proj / "fine.jsonl", [user("hello"), assistant([{"type": "text", "text": "hi"}])])
+
+    sessions = {s.session_id: s for s in scan(tmp_path, cache_path=None)}
+    assert set(sessions) == {"odd", "fine"}
+    odd = sessions["odd"]
+    assert (odd.state, odd.title, odd.cwd, odd.last_assistant_text) == (ENDED, "real prompt", "/w", "\nok")
+
+
+def test_one_unparseable_transcript_does_not_hide_the_rest(tmp_path, monkeypatch):
+    import cc_sessions_man.scan as scan_mod
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    write(proj / "a.jsonl", [user("one"), assistant([{"type": "text", "text": "done"}])])
+    write(proj / "b.jsonl", [user("two"), assistant([{"type": "text", "text": "done"}])])
+    real = scan_mod.parse_transcript
+
+    def picky(path):
+        if path.stem == "a":
+            raise TypeError("shape we don't understand")
+        return real(path)
+
+    monkeypatch.setattr(scan_mod, "parse_transcript", picky)
+    assert [s.session_id for s in scan(tmp_path, cache_path=None)] == ["b"]
