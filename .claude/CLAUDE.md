@@ -21,9 +21,12 @@ requirements.
      approaches tried and rejected, and why).
 7. Check the change for anything machine-specific or private: real paths, user names, session
    IDs, or company and project names. Use generic examples only.
-8. Commit when the feature is built, checked and documented: one change per commit, a short
-   imperative subject, and a short body saying what and why. Once the project is published,
-   work moves to branches and pull requests.
+8. Run `/code-review` on the uncommitted change, and address its findings: fix the clear
+   ones, and bring any that go against a decision already made to the user rather than
+   changing them. Rerun the checks after the fixes.
+9. Commit when the feature is built, checked, documented and reviewed: one change per
+   commit, a short imperative subject, and a short body saying what and why. Once the
+   project is published, work moves to branches and pull requests.
 
 ## Tools and style
 
