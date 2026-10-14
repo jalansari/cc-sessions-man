@@ -11,7 +11,8 @@ DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
 def claude_home_from_env() -> Path:
     """Claude Code's config dir: $CLAUDE_CONFIG_DIR if set and non-empty, else ~/.claude."""
     env = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-    return Path(env).expanduser() if env else DEFAULT_CLAUDE_HOME
+    # Absolute, because resuming changes into the session's folder before running claude.
+    return Path(env).expanduser().resolve() if env else DEFAULT_CLAUDE_HOME
 
 
 def claude_env(home: Path) -> dict[str, str]:
@@ -20,13 +21,13 @@ def claude_env(home: Path) -> dict[str, str]:
     if home.expanduser().resolve() == DEFAULT_CLAUDE_HOME.resolve():
         env.pop("CLAUDE_CONFIG_DIR", None)
     else:
-        env["CLAUDE_CONFIG_DIR"] = str(home.expanduser())
+        env["CLAUDE_CONFIG_DIR"] = str(home.expanduser().resolve())
     return env
 
 
 def home_arg(value: str) -> Path:
     """argparse type for --claude-home."""
-    return Path(value).expanduser()
+    return Path(value).expanduser().resolve()
 
 
 CLAUDE_HOME = claude_home_from_env()

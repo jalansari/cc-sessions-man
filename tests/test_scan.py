@@ -172,3 +172,18 @@ def test_scan_skips_transcript_deleted_mid_scan(tmp_path, monkeypatch):
     cache = tmp_path / "scan.json"
     assert [s.session_id for s in scan(tmp_path, cache)] == ["b"]
     assert list(json.loads(cache.read_text())["entries"]) == [str(proj / "b.jsonl")]
+
+
+def test_relative_config_dir_is_made_absolute(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from cc_sessions_man.cli import resume_command
+    from cc_sessions_man.scan import claude_env, claude_home_from_env, home_arg
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "alt-claude")
+    assert claude_home_from_env() == tmp_path / "alt-claude"
+    assert home_arg("./alt-claude") == tmp_path / "alt-claude"
+    # Even a relative Path handed in directly comes out absolute where claude sees it.
+    assert claude_env(Path("alt-claude"))["CLAUDE_CONFIG_DIR"] == str(tmp_path / "alt-claude")
+    assert f"CLAUDE_CONFIG_DIR={tmp_path / 'alt-claude'} claude" in resume_command(Path("alt-claude"), "id", "/w")

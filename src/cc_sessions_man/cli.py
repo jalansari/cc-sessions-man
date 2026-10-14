@@ -67,7 +67,8 @@ def config_prefix(home: Path) -> str:
     """`CLAUDE_CONFIG_DIR=... ` for shell commands, or "" for the default ~/.claude."""
     if home.resolve() == DEFAULT_CLAUDE_HOME.resolve():
         return ""
-    return f"CLAUDE_CONFIG_DIR={shlex.quote(str(home))} "
+    # Absolute: the command cd's into the session's folder first.
+    return f"CLAUDE_CONFIG_DIR={shlex.quote(str(home.expanduser().resolve()))} "
 
 
 def resume_command(home: Path, session_id: str, cwd: str) -> str:
