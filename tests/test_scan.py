@@ -266,3 +266,25 @@ def test_one_unparseable_transcript_does_not_hide_the_rest(tmp_path, monkeypatch
 
     monkeypatch.setattr(scan_mod, "parse_transcript", picky)
     assert [s.session_id for s in scan(tmp_path, cache_path=None)] == ["b"]
+
+
+def test_live_sessions_detects_reused_pid(tmp_path, monkeypatch):
+    import os
+
+    import cc_sessions_man.scan as scan_mod
+    from cc_sessions_man.scan import live_sessions
+
+    me = os.getpid()
+    real_start = scan_mod._proc_start(me)
+    assert real_start is not None  # running on Linux, /proc available
+
+    d = tmp_path / "sessions"
+    d.mkdir()
+    (d / "same.json").write_text(json.dumps({"pid": me, "sessionId": "same", "procStart": real_start}))
+    (d / "reused.json").write_text(json.dumps({"pid": me, "sessionId": "reused", "procStart": "1"}))
+    (d / "old-format.json").write_text(json.dumps({"pid": me, "sessionId": "old-format"}))
+    assert set(live_sessions(tmp_path)) == {"same", "old-format"}
+
+    # Without /proc (e.g. macOS), fall back to the PID check alone.
+    monkeypatch.setattr(scan_mod, "_proc_start", lambda pid: None)
+    assert set(live_sessions(tmp_path)) == {"same", "reused", "old-format"}

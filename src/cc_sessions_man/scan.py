@@ -57,6 +57,20 @@ class Session:
     last_assistant_text: str = ""
 
 
+def _proc_start(pid: int) -> str | None:
+    """When a process started, in clock ticks since boot (field 22 of /proc/<pid>/stat).
+
+    None when /proc isn't available (not Linux) or the process has gone.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    # The command name (field 2) is in parentheses and may contain spaces.
+    fields = stat[stat.rindex(")") + 2 :].split()
+    return fields[19] if len(fields) > 19 else None
+
+
 def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
     """Sessions with a running process, keyed by session ID."""
     live = {}
@@ -76,6 +90,11 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
             pass  # exists, but owned by another user (shared config dir, sudo): still running
         except OSError:
             continue  # no such process
+        # Claude records its process start time. If the PID now belongs to a process that
+        # started at a different time, Claude died and the OS reused the PID.
+        recorded = d.get("procStart")
+        if recorded is not None and (actual := _proc_start(pid)) is not None and str(recorded) != actual:
+            continue
         live[d["sessionId"]] = d
     return live
 
