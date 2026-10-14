@@ -28,7 +28,9 @@ def test_project_dir_name_matches_claude_code():
 
 
 def make_session(tmp_path, root, cwds, extra_lines=()):
-    """A transcript in root's project folder, with one entry per cwd, plus its session folder."""
+    """A transcript in root's project folder, with one entry per cwd, plus its session
+    folder.
+    """
     home = tmp_path / "home"
     proj = home / "projects" / project_dir_name(str(root))
     proj.mkdir(parents=True)
@@ -95,7 +97,8 @@ def test_move_rewrites_cwds_and_moves_the_files(tmp_path):
 
 
 def test_moving_this_kind_of_session(tmp_path):
-    # Started in ~/.claude, later ran commands from ~/.claude/projects: both end up in dest.
+    # Started in ~/.claude, later ran commands from ~/.claude/projects: both end up in
+    # dest.
     root, dest = tmp_path / ".claude", tmp_path / "cc-sessions-man"
     (root / "projects").mkdir(parents=True)
     dest.mkdir()
@@ -164,7 +167,8 @@ def test_a_failed_move_restores_the_original(tmp_path, monkeypatch):
     check_restored()
     monkeypatch.setattr(move_mod.os, "rename", real_rename)
 
-    # The original can't be removed, after everything else has moved: all of it goes back.
+    # The original can't be removed, after everything else has moved: all of it goes
+    # back.
     def no_unlink_original(path):
         if Path(path) == s.path:
             raise PermissionError("read-only")

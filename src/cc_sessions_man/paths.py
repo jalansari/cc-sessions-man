@@ -1,11 +1,14 @@
-"""Folder completion for typed paths: what Tab offers and which part of the text is wrong."""
+"""Folder completion for typed paths: what Tab offers and which part of the text is
+wrong.
+"""
 
 import os
 from pathlib import Path
 
 
 def split_path(text: str) -> tuple[str, str]:
-    """Split typed text into the folder part (up to the last "/") and the name being typed.
+    """Split typed text into the folder part (up to the last "/") and the name being
+    typed.
 
     Text with no "/" (including "" and "~") is a name in the home folder: ("~/", name).
     """
@@ -18,7 +21,8 @@ def split_path(text: str) -> tuple[str, str]:
 
 
 def to_path(text: str) -> Path | None:
-    """The folder typed text names, by the same rules as completion: a bare name is in home.
+    """The folder typed text names, by the same rules as completion: a bare name is in
+    home.
 
     None when it can't be worked out, e.g. "~nobody/" for a user that doesn't exist.
     """
@@ -59,8 +63,8 @@ def subfolders(parent: str, prefix: str) -> list[str]:
 def problem_span(text: str) -> tuple[int, int] | None:
     """The part of `text` to show in red, as (start, end); None if it's fine.
 
-    The folder part if it isn't an existing folder, else the name being typed if no folder
-    in it starts with that name. An empty name (just after a "/") is always fine.
+    The folder part if it isn't an existing folder, else the name being typed if no
+    folder in it starts with that name. An empty name (just after a "/") is always fine.
     """
     parent, prefix = split_path(text)
     start = len(text) - len(prefix)  # where the name starts in the text as typed
@@ -79,10 +83,11 @@ def problem_span(text: str) -> tuple[int, int] | None:
 
 
 class Completer:
-    """Tab completion that cycles: each press fills in the next folder matching the prefix.
+    """Tab completion that cycles: each press fills in the next folder matching the
+    prefix.
 
-    It cycles while the text is still what it last filled in; any edit starts a new round
-    (the input calls reset(), so retyping the same text counts as an edit too).
+    It cycles while the text is still what it last filled in; any edit starts a new
+    round (the input calls reset(), so retyping the same text counts as an edit too).
     """
 
     def __init__(self):

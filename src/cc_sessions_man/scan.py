@@ -11,9 +11,12 @@ DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
 
 
 def claude_home_from_env() -> Path:
-    """Claude Code's config dir: $CLAUDE_CONFIG_DIR if set and non-empty, else ~/.claude."""
+    """Claude Code's config dir: $CLAUDE_CONFIG_DIR if set and non-empty, else
+    ~/.claude.
+    """
     env = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-    # Absolute, because resuming changes into the session's folder before running claude.
+    # Absolute, because resuming changes into the session's folder before running
+    # claude.
     return Path(env).expanduser().resolve() if env else DEFAULT_CLAUDE_HOME
 
 
@@ -95,11 +98,12 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
         try:
             os.kill(pid, 0)
         except PermissionError:
-            pass  # exists, but owned by another user (shared config dir, sudo): still running
+            # exists, but owned by another user (shared config dir, sudo): still running
+            pass
         except OSError:
             continue  # no such process
-        # Claude records its process start time. If the PID now belongs to a process that
-        # started at a different time, Claude died and the OS reused the PID.
+        # Claude records its process start time. If the PID now belongs to a process
+        # that started at a different time, Claude died and the OS reused the PID.
         recorded = d.get("procStart")
         if (
             recorded is not None
@@ -112,12 +116,16 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
 
 
 def _str(value) -> str:
-    """A transcript field as a string; anything else (null, numbers, objects) becomes ""."""
+    """A transcript field as a string; anything else (null, numbers, objects) becomes
+    "".
+    """
     return value if isinstance(value, str) else ""
 
 
 def _context_tokens(message) -> int:
-    """Tokens in the context a reply was generated from: fresh, cache-written and cache-read input."""
+    """Tokens in the context a reply was generated from: fresh, cache-written and
+    cache-read input.
+    """
     usage = message.get("usage") if isinstance(message, dict) else None
     if not isinstance(usage, dict):
         return 0
@@ -193,7 +201,8 @@ def parse_transcript(path: Path) -> Session | None:
                 s.context_tokens = (
                     tokens  # the latest reply's context is the session's current size
                 )
-            # Claude Code writes "<synthetic>" on placeholder replies it makes itself (errors, interrupts).
+            # Claude Code writes "<synthetic>" on placeholder replies it makes itself
+            # (errors, interrupts).
             model = _str(message.get("model")) if isinstance(message, dict) else ""
             if t == "assistant" and model and model != "<synthetic>":
                 s.model = model  # the latest, since /model can switch partway
@@ -234,7 +243,8 @@ def _to_cache(s: Session | None) -> dict | None:
         return None
     d = asdict(s)
     d["path"] = str(s.path)
-    # Keep the cache small; classify only looks at the start of the prompt and end of the reply.
+    # Keep the cache small; classify only looks at the start of the prompt and end of
+    # the reply.
     d["last_user_prompt"] = s.last_user_prompt[:2000]
     d["last_assistant_text"] = s.last_assistant_text[-4000:]
     return d
@@ -247,7 +257,9 @@ def _from_cache(d: dict | None) -> Session | None:
 
 
 def _load_scan_cache(path: Path) -> dict:
-    """Cached entries by transcript path; {} if the file is missing, stale or malformed."""
+    """Cached entries by transcript path; {} if the file is missing, stale or
+    malformed.
+    """
     try:
         data = json.loads(path.read_text())
     except OSError, ValueError:
@@ -282,7 +294,9 @@ _DEFAULT = object()
 
 
 def scan_cache_path(home: Path) -> Path:
-    """One scan cache per Claude home, so switching --claude-home doesn't evict the other."""
+    """One scan cache per Claude home, so switching --claude-home doesn't evict the
+    other.
+    """
     digest = hashlib.sha256(str(home.expanduser().resolve()).encode()).hexdigest()[:12]
     return (
         CACHE_DIR / f"scan-{digest}.json"
@@ -315,9 +329,10 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
                 except FileNotFoundError:
                     raise
                 except Exception:
-                    # A transcript in a shape we don't understand: skip it rather than let
-                    # one file hide every session. Remembered as "nothing to show" until the
-                    # file changes, so it isn't re-read (and the cache rewritten) every scan.
+                    # A transcript in a shape we don't understand: skip it rather than
+                    # let one file hide every session. Remembered as "nothing to show"
+                    # until the file changes, so it isn't re-read (and the cache
+                    # rewritten) every scan.
                     s = None
                 hit = {
                     "mtime": st.st_mtime,
@@ -326,7 +341,8 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
                 }
                 changed = True
         except FileNotFoundError:
-            # Deleted between glob() and reading it (another viewer, or Claude Code cleanup).
+            # Deleted between glob() and reading it (another viewer, or Claude Code
+            # cleanup).
             changed = True
             continue
         entries[key] = hit
@@ -334,7 +350,8 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
             continue
         if s.session_id in live:  # live state is never cached
             s.state = RUNNING
-            # Only take string values: a null or odd field mustn't replace the transcript's cwd.
+            # Only take string values: a null or odd field mustn't replace the
+            # transcript's cwd.
             s.live_status = _str(live[s.session_id].get("status"))
             s.cwd = _str(live[s.session_id].get("cwd")) or s.cwd
         sessions.append(s)

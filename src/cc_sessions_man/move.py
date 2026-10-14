@@ -12,7 +12,9 @@ PROJECT_NAME_MAX = 200
 
 
 def _java_hash(text: str) -> int:
-    """Claude Code's string hash: 31 * h + code unit over UTF-16, as a signed 32-bit int."""
+    """Claude Code's string hash: 31 * h + code unit over UTF-16, as a signed 32-bit
+    int.
+    """
     h = 0
     units = text.encode("utf-16-le")
     for i in range(0, len(units), 2):
@@ -31,10 +33,12 @@ def _base36(n: int) -> str:
 
 
 def project_dir_name(path: str) -> str:
-    """The folder under projects/ that Claude Code keeps a working folder's sessions in.
+    """The folder under projects/ that Claude Code keeps a working folder's sessions
+    in.
 
     Every character that isn't an ASCII letter or digit becomes "-" (one per UTF-16 code
-    unit, as in JavaScript), and names over 200 characters are cut and given a hash suffix.
+    unit, as in JavaScript), and names over 200 characters are cut and given a hash
+    suffix.
     """
     name = "".join(
         c if c.isascii() and c.isalnum() else "-" * (2 if ord(c) > 0xFFFF else 1)
@@ -48,7 +52,8 @@ def project_dir_name(path: str) -> str:
 def _launch_dir(cwds: list[str], project_name: str) -> str | None:
     """The folder the session was started in: the one its project folder is named after.
 
-    Later entries can record subfolders the session changed into. Falls back to the first.
+    Later entries can record subfolders the session changed into. Falls back to the
+    first.
     """
     return next(
         (c for c in cwds if project_dir_name(c) == project_name),
@@ -59,8 +64,9 @@ def _launch_dir(cwds: list[str], project_name: str) -> str | None:
 def _encode(entry: dict) -> bytes:
     """A rewritten line: compact, like Claude Code's own JSON.stringify.
 
-    A string holding an unpaired surrogate (text cut mid-emoji) can't be written as UTF-8,
-    so such a line keeps its non-ASCII characters escaped instead; it parses the same.
+    A string holding an unpaired surrogate (text cut mid-emoji) can't be written as
+    UTF-8, so such a line keeps its non-ASCII characters escaped instead; it parses the
+    same.
     """
     try:
         return (
@@ -100,11 +106,11 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
     """Move a session to the working folder `dest`. Returns the new transcript path.
 
     - Every `cwd` in the transcript is rewritten. A folder already in `dest` stays. The
-      launch folder becomes `dest`; a subfolder of it becomes the same subfolder of `dest`
-      if that exists, otherwise `dest`. Anything else becomes `dest`. Message text,
-      including paths in it, is left alone.
-    - The transcript and its `<session-id>/` folder (subagents, tool output, title) move to
-      `projects/<dest's project name>/`, where Claude Code keeps `dest`'s sessions.
+      launch folder becomes `dest`; a subfolder of it becomes the same subfolder of
+      `dest` if that exists, otherwise `dest`. Anything else becomes `dest`. Message
+      text, including paths in it, is left alone.
+    - The transcript and its `<session-id>/` folder (subagents, tool output, title) move
+      to `projects/<dest's project name>/`, where Claude Code keeps `dest`'s sessions.
 
     The new transcript is on disk before the original is removed, and if any step fails
     the earlier ones are undone, so the session is always complete in one place.
@@ -178,7 +184,8 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
         if not in_place:
             done.append(lambda: os.unlink(target))
             if old_folder.exists():
-                # A rename, never a copy: all-or-nothing, so a failure can't leave a half-moved folder.
+                # A rename, never a copy: all-or-nothing, so a failure can't leave a
+                # half-moved folder.
                 os.rename(old_folder, new_folder)
                 done.append(lambda: os.rename(new_folder, old_folder))
             _fsync_dir(

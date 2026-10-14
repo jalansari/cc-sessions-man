@@ -10,7 +10,8 @@ from .scan import CLAUDE_HOME, Session, live_sessions
 def session_files(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
     """Everything Claude Code keeps for one session, keyed by its ID.
 
-    The prompt history in ~/.claude/history.jsonl is shared by all sessions and is left alone.
+    The prompt history in ~/.claude/history.jsonl is shared by all sessions and is left
+    alone.
     """
     candidates = [
         s.path,  # the transcript

@@ -180,7 +180,8 @@ def test_claude_home_from_env(monkeypatch, tmp_path):
     assert claude_home_from_env() == DEFAULT_CLAUDE_HOME  # empty means unset, not "."
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "~/.claude-work")
     assert claude_home_from_env() == Path.home() / ".claude-work"
-    # resuming against another dir must point claude at it; the default dir needs nothing
+    # resuming against another dir must point claude at it; the default dir needs
+    # nothing
     assert claude_env(tmp_path)["CLAUDE_CONFIG_DIR"] == str(tmp_path)
     assert "CLAUDE_CONFIG_DIR" not in claude_env(DEFAULT_CLAUDE_HOME)
 

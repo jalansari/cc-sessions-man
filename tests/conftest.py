@@ -16,7 +16,9 @@ def isolated_caches(tmp_path, monkeypatch):
 
 @pytest.fixture
 def trashed(monkeypatch):
-    """Record what would go to the Trash, and actually remove it so rescans see the change."""
+    """Record what would go to the Trash, and actually remove it so rescans see the
+    change.
+    """
     import shutil
 
     moved = []

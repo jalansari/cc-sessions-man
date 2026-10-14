@@ -74,7 +74,7 @@ async def settle(app, pilot):
     await pilot.pause()
 
 
-# Automatic refresh ---------------------------------------------------------------
+# Automatic refresh --------------------------------------------------------------------
 
 
 def test_auto_refresh_picks_up_new_sessions_quietly(tmp_path, monkeypatch):
@@ -149,7 +149,7 @@ def test_unchanged_refresh_does_not_rebuild_table_or_jump_sideways(
     assert scroll_x == 20  # ...but keeps the sideways scroll
 
 
-# Manual refresh while something is running ---------------------------------------
+# Manual refresh while something is running --------------------------------------------
 
 
 def test_r_during_a_load_is_queued_not_refused(tmp_path, monkeypatch):
@@ -270,7 +270,7 @@ def test_failed_r_keeps_classification_paused(tmp_path, monkeypatch):
     assert run_app(home, monkeypatch, steps, use_llm=True) == (True, ["error"])
 
 
-# Changes made while a refresh is scanning ------------------------------------------------
+# Changes made while a refresh is scanning ---------------------------------------------
 
 
 def hold_next_scan(monkeypatch):
@@ -350,7 +350,7 @@ def test_marks_survive_a_scan_that_misses_a_session(tmp_path, monkeypatch):
     assert after == {"bbb"}  # aaa's transcript is gone: its mark goes too
 
 
-# The --refresh-interval option ----------------------------------------------------------
+# The --refresh-interval option --------------------------------------------------------
 
 
 def test_refresh_interval_option(tmp_path, monkeypatch, capsys):

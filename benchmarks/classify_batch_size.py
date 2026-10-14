@@ -9,8 +9,10 @@ Nothing is written to the app's caches. Results are printed as a Markdown table 
 saved as JSON under benchmarks/results/.
 
     uv run python benchmarks/classify_batch_size.py
-    uv run python benchmarks/classify_batch_size.py --sample 40 --batch-sizes 5 20 --jobs 8
-    uv run python benchmarks/classify_batch_size.py --sample 160 --batch-sizes 5 10 --jobs 8 16 --no-reference
+    uv run python benchmarks/classify_batch_size.py --sample 40 --batch-sizes 5 20
+        --jobs 8
+    uv run python benchmarks/classify_batch_size.py --sample 160 --batch-sizes 5 10
+        --jobs 8 16 --no-reference
 """
 
 import argparse
@@ -83,7 +85,9 @@ def run_config(sample: list[Session], batch_size: int, jobs: int, model: str) ->
 def agreement(
     a: dict[str, str], b: dict[str, str]
 ) -> tuple[float | None, float | None]:
-    """(exact label agreement, agreement on 'needs you' vs not) over sessions both labelled."""
+    """(exact label agreement, agreement on 'needs you' vs not) over sessions both
+    labelled.
+    """
     common = a.keys() & b.keys()
     if not common:
         return None, None
@@ -147,7 +151,8 @@ def main() -> None:
 
     sample = pick_sample(args.sample, args.seed)
     print(
-        f"Sample: {len(sample)} finished sessions (seed {args.seed}), model {args.model}\n"
+        f"Sample: {len(sample)} finished sessions (seed {args.seed}), "
+        f"model {args.model}\n"
     )
 
     ref = ref2 = None
@@ -158,7 +163,8 @@ def main() -> None:
         ref2 = run_config(sample, 1, args.reference_jobs, args.model)
         noise_exact, noise_needs = agreement(ref["labels"], ref2["labels"])
         print(
-            f"  model noise: {pct(noise_exact)} exact, {pct(noise_needs)} needs-you agreement between two batch-1 runs\n"
+            f"  model noise: {pct(noise_exact)} exact, {pct(noise_needs)} needs-you "
+            "agreement between two batch-1 runs\n"
         )
 
     runs = []
@@ -178,21 +184,27 @@ def main() -> None:
             runs.append(r)
 
     print(
-        "\n| Batch | Parallel | Calls | Wall | First result | Sessions/s | Mean call | Labelled | Agree (exact) | Agree (needs you) | Cost |"
+        "\n| Batch | Parallel | Calls | Wall | First result | Sessions/s | Mean call "
+        "| Labelled | Agree (exact) | Agree (needs you) | Cost |"
     )
     print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in runs:
         print(
-            f"| {r['batch_size']} | {r['jobs']} | {r['calls']} | {r['wall_s']}s | {fmt(r['first_result_s'], 's')} "
-            f"| {r['sessions_per_s']} | {fmt(r['mean_call_s'], 's')} | {r['labelled']}/{len(sample)} "
-            f"| {pct(r['agree_exact'])} | {pct(r['agree_needs_you'])} | ${r['cost_usd']:.3f} |"
+            f"| {r['batch_size']} | {r['jobs']} | {r['calls']} | {r['wall_s']}s "
+            f"| {fmt(r['first_result_s'], 's')} "
+            f"| {r['sessions_per_s']} | {fmt(r['mean_call_s'], 's')} "
+            f"| {r['labelled']}/{len(sample)} "
+            f"| {pct(r['agree_exact'])} | {pct(r['agree_needs_you'])} "
+            f"| ${r['cost_usd']:.3f} |"
         )
     if ref:
         print(
-            f"\nBaseline noise (batch 1 vs batch 1): {pct(noise_exact)} exact, {pct(noise_needs)} needs-you."
+            f"\nBaseline noise (batch 1 vs batch 1): {pct(noise_exact)} exact, "
+            f"{pct(noise_needs)} needs-you."
         )
         print(
-            "Agreement is against the batch-1 reference; the reference row is compared with its repeat run."
+            "Agreement is against the batch-1 reference; the reference row is compared "
+            "with its repeat run."
         )
 
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -212,7 +224,8 @@ def main() -> None:
         )
     )
     print(
-        f"Saved {out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out}"
+        "Saved "
+        f"{out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out}"
     )
 
 

@@ -353,7 +353,8 @@ def test_a_search_stopped_as_claude_starts_still_stops_it(tmp_path, monkeypatch)
 
     async def steps(app, pilot):
         def racing(prompt, model, projects, budget, on_start=None):
-            app.stop_search_process()  # the UI stops it first (thread-safe, no widgets)...
+            app.stop_search_process()  # the UI stops it first (thread-safe, no
+            # widgets)...
             on_start(proc)  # ...then claude starts
             return [], 0.0
 

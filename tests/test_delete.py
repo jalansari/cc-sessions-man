@@ -59,7 +59,9 @@ def test_trash_session_moves_all_session_files(tmp_path, trashed):
 
 
 def mark_live(home, sid):
-    """Register a live session the way Claude Code does, using this test's own (alive) pid."""
+    """Register a live session the way Claude Code does, using this test's own (alive)
+    pid.
+    """
     import os
 
     (home / "sessions" / f"{sid}.json").write_text(
@@ -100,7 +102,9 @@ def run_ui(home, monkeypatch, steps):
 
 
 def select_header(app, key):
-    """Sort as a click on a column heading does, without depending on where the heading is."""
+    """Sort as a click on a column heading does, without depending on where the heading
+    is.
+    """
     app.on_data_table_header_selected(
         SimpleNamespace(column_key=SimpleNamespace(value=key))
     )
@@ -405,7 +409,8 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
     proj = tmp_path / "projects" / "-w"
     proj.mkdir(parents=True)
     (tmp_path / "sessions").mkdir()
-    layout = [  # (session id, folder, minute of last activity, label); the two "tie"s share a time
+    layout = [  # (session id, folder, minute of last activity, label); the two "tie"s
+        # share a time
         ("a-act-old", "/a", 10, "action"),
         ("b-act-old", "/b", 20, "action"),
         ("a-tie", "/a", 25, "done"),
@@ -744,8 +749,9 @@ def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
 
 
 def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypatch):
-    # Columns sized themselves only once the table was idle, so between quick clicks they
-    # shrank to their headings' width. Widths are now set when the columns are made.
+    # Columns sized themselves only once the table was idle, so between quick clicks
+    # they shrank to their headings' width. Widths are now set when the columns are
+    # made.
     home = make_home(tmp_path, ["a-session-with-a-long-enough-title", "b"])
 
     async def steps(app, pilot):
@@ -828,7 +834,8 @@ def test_titles_and_folders_are_shown_literally_not_as_markup(tmp_path, monkeypa
             r.session.session_id: table.get_cell(r.session.session_id, "title")
             for r in app.rows
         }
-        # The cell as drawn: a str cell would be parsed as markup ("[/]" raised MarkupError).
+        # The cell as drawn: a str cell would be parsed as markup ("[/]" raised
+        # MarkupError).
         assert {k: default_cell_formatter(v).plain for k, v in shown.items()} == titles
 
     run_ui(home, monkeypatch, steps)

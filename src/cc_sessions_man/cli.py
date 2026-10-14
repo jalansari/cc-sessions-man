@@ -71,7 +71,9 @@ def detail_of(s, label_info: dict | None) -> str:
 
 
 def short_path(p: str) -> str:
-    """Abbreviate the home folder to ~, only for the folder itself or paths inside it."""
+    """Abbreviate the home folder to ~, only for the folder itself or paths inside
+    it.
+    """
     home = str(Path.home())
     if p == home or p.startswith(home + os.sep):
         return "~" + p[len(home) :]
@@ -152,7 +154,8 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
         "--claude-home",
         type=home_arg,
         default=CLAUDE_HOME,
-        help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
+        help="Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now "
+        f"{short_path(str(CLAUDE_HOME))})",
     )
 
 
@@ -168,7 +171,8 @@ def add_search_args(p: argparse.ArgumentParser) -> None:
         type=positive_float,
         default=DEFAULT_SEARCH_BUDGET,
         metavar="USD",
-        help=f"stop an AI search that costs more than USD (default: {DEFAULT_SEARCH_BUDGET:g}). "
+        help="stop an AI search that costs more than USD "
+        f"(default: {DEFAULT_SEARCH_BUDGET:g}). "
         "Checked between steps, so a search can go over by one step",
     )
 
@@ -202,8 +206,10 @@ def parse_args(argv=None):
     p.add_argument(
         "--search",
         metavar="QUERY",
-        help="AI search: ask claude to look through the transcripts for sessions matching QUERY, "
-        "and list them most relevant first. With -n or --days, only those sessions can match",
+        help="AI search: ask claude to look through the transcripts for sessions "
+        "matching QUERY, "
+        "and list them most relevant first. With -n or --days, only those sessions "
+        "can match",
     )
     add_common_args(p)
     add_search_args(p)
@@ -272,9 +278,10 @@ def main(argv=None) -> int:
     cache = Cache(CACHE_PATH)
     labels, todo = cache.partition(sessions)
     if args.refresh:
-        # Send every listed finished session again, but keep the old labels until new ones
-        # arrive: classify() overwrites on success, and a failed batch must not lose them.
-        # Sessions outside -n / --days aren't listed, so they're never touched.
+        # Send every listed finished session again, but keep the old labels until new
+        # ones arrive: classify() overwrites on success, and a failed batch must not
+        # lose them. Sessions outside -n / --days aren't listed, so they're never
+        # touched.
         todo = [s for s in sessions if s.session_id in labels] + todo
     if not args.no_llm:
 
@@ -338,7 +345,8 @@ def main(argv=None) -> int:
         print(f"\n== {label} ({len(members)}) ==")
         for s, d in members:
             print(
-                f"{s.last_timestamp[:16].replace('T', ' ')}  {s.session_id}  {short_path(s.cwd)}"
+                f"{s.last_timestamp[:16].replace('T', ' ')}  {s.session_id}  "
+                f"{short_path(s.cwd)}"
             )
             print(f"    {s.title}")
             if d:
@@ -346,7 +354,8 @@ def main(argv=None) -> int:
     counts = Counter(g for g, _, _ in rows)
     print("\n" + ", ".join(f"{GROUPS[g]}: {counts[g]}" for g in GROUPS if counts[g]))
     print(
-        f"Resume one with: cd <dir> && {config_prefix(args.claude_home)}claude --resume <session-id>"
+        f"Resume one with: cd <dir> && {config_prefix(args.claude_home)}"
+        "claude --resume <session-id>"
     )
     return 0
 
