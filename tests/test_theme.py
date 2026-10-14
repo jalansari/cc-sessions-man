@@ -1,8 +1,8 @@
-from test_delete import make_home, run_ui
-from textual.widgets._footer import FooterKey
-from textual.widgets._key_panel import BindingsTable
+import re
 
-import cc_sessions_man.ui as ui
+from rich.text import Text
+from test_delete import make_home, run_ui
+from textual import constants
 
 THEME_KEYS = {"ctrl+t", "ctrl+y", "ctrl+r"}
 
@@ -50,8 +50,37 @@ def test_ctrl_r_resets_to_the_default_theme(tmp_path, monkeypatch):
         seen.append(app.theme)
 
     run_ui(home, monkeypatch, steps)
-    assert seen[0] != ui.DEFAULT_THEME
-    assert seen[1] == ui.DEFAULT_THEME == "textual-dark"
+    assert seen[0] != constants.DEFAULT_THEME
+    assert seen[1] == constants.DEFAULT_THEME
+
+
+def test_ctrl_r_follows_textual_theme(tmp_path, monkeypatch):
+    """TEXTUAL_THEME sets Textual's default theme, and Ctrl+R goes back to it."""
+    home = make_home(tmp_path, ["a1"])
+    monkeypatch.setattr(constants, "DEFAULT_THEME", "nord")
+    seen = []
+
+    async def steps(app, pilot):
+        await pilot.press("ctrl+r")
+        seen.append(app.theme)
+
+    run_ui(home, monkeypatch, steps)
+    assert seen == ["nord"]
+
+
+def test_theme_notices_replace_each_other(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["a1"])
+    toasts, theme = [], []
+
+    async def steps(app, pilot):
+        for _ in range(5):
+            await pilot.press("ctrl+t")
+        await pilot.pause()
+        toasts.extend(str(t.render()) for t in app.screen.query("Toast"))
+        theme.append(app.theme)
+
+    run_ui(home, monkeypatch, steps, notifications=True)
+    assert len(toasts) == 1 and theme[0] in toasts[0]
 
 
 def test_theme_keys_are_in_the_keys_panel_but_not_the_footer(tmp_path, monkeypatch):
@@ -59,14 +88,18 @@ def test_theme_keys_are_in_the_keys_panel_but_not_the_footer(tmp_path, monkeypat
     footer, panel = [], []
 
     async def steps(app, pilot):
-        footer.extend(k.key for k in app.screen.query(FooterKey))
+        footer.extend(k.key for k in app.screen.query("FooterKey"))
         await pilot.press("k")
         await pilot.pause()
         with app.console.capture() as capture:
-            app.console.print(app.screen.query_one(BindingsTable).render())
-        panel.append(capture.get())
+            app.console.print(app.screen.query_one("BindingsTable").render())
+        panel.append(Text.from_ansi(capture.get()).plain)
 
     run_ui(home, monkeypatch, steps)
     assert footer and not THEME_KEYS & set(footer)
-    for description in ("Next theme", "Previous theme", "Default theme"):
-        assert description in panel[0]
+    for key, description in (
+        ("t", "Next theme"),
+        ("y", "Previous theme"),
+        ("r", "Default theme"),
+    ):
+        assert re.search(rf"\^{key} +{description}", panel[0])

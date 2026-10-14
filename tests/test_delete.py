@@ -86,13 +86,13 @@ def test_trash_session_uses_live_state_not_scan_state(tmp_path, trashed):
     assert trashed
 
 
-def run_ui(home, monkeypatch, steps):
+def run_ui(home, monkeypatch, steps, notifications=False):
     monkeypatch.setattr(ui, "CACHE_PATH", home / "cache.json")
     monkeypatch.setattr(ui, "Cache", lambda _p: Cache(home / "cache.json"))
 
     async def go():
         app = ui.SessionsApp(home, "haiku", use_llm=False)
-        async with app.run_test(size=(160, 40)) as pilot:
+        async with app.run_test(size=(160, 40), notifications=notifications) as pilot:
             await app.workers.wait_for_complete()
             await pilot.pause()
             await steps(app, pilot)

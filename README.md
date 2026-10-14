@@ -143,7 +143,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
 | `k` | Show or hide the keys panel, which lists every key and what it does |
 | Ctrl+T / Ctrl+Y | Switch to the next or previous theme, in the order of the Ctrl+P theme list. Listed in the keys panel, not the footer |
-| Ctrl+R | Go back to the default theme, `textual-dark`. Listed in the keys panel, not the footer |
+| Ctrl+R | Go back to the default theme: `textual-dark`, or the one set by `TEXTUAL_THEME`. Listed in the keys panel, not the footer |
 | `q` | Quit |
 
 Use the drop-down at the top left to show a single group.

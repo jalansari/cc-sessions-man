@@ -14,7 +14,7 @@ from pathlib import Path
 from rich.cells import cell_len
 from rich.highlighter import Highlighter
 from rich.text import Text
-from textual import work
+from textual import constants, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import CommandPalette, DiscoveryHit, Hit, Hits
@@ -48,8 +48,6 @@ from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT,
 
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
-
-DEFAULT_THEME = "textual-dark"
 
 # The sort mark in a column heading, coloured so it stands apart from the name.
 SORT_MARK_STYLE = "bold #61afef"
@@ -570,6 +568,9 @@ class SessionsApp(App[Session | None]):
         self.search_notice: Notification | None = (
             None  # "Searching…", shown until it ends
         )
+        # The last theme key's notice, replaced by the next so quick presses don't
+        # stack.
+        self.theme_notice: Notification | None = None
         # The worker records the process while the UI may be stopping the search: one at
         # a time.
         self.search_lock = threading.Lock()
@@ -1257,12 +1258,20 @@ class SessionsApp(App[Session | None]):
         names = sorted(self.available_themes)
         i = names.index(self.theme) if self.theme in names else -1
         self.theme = names[(i + step) % len(names)]
-        self.notify(f"Theme: {self.theme}")
+        self.show_theme_notice()
 
     def action_default_theme(self) -> None:
-        """Ctrl+R: back to the default theme."""
-        self.theme = DEFAULT_THEME
-        self.notify(f"Theme: {self.theme}")
+        """Ctrl+R: back to the theme the app starts with: TEXTUAL_THEME, or Textual's
+        default.
+        """
+        self.theme = constants.DEFAULT_THEME
+        self.show_theme_notice()
+
+    def show_theme_notice(self) -> None:
+        if self.theme_notice is not None:
+            self.call_later(self._remove_notice, self.theme_notice)
+        self.theme_notice = Notification(f"Theme: {self.theme}")
+        self.post_message(Notify(self.theme_notice))
 
     def action_cycle_sort(self) -> None:
         """s: step through SORT_MODES. From a column-header sort, start at the first."""

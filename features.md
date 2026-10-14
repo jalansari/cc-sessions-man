@@ -628,8 +628,8 @@ Each session gets exactly one status.
 - **Theme keys:** hidden from the footer, but listed in the keys panel (`k`).
   - **Ctrl+T:** the next theme, in the theme picker's (alphabetical) order, wrapping round at the end.
   - **Ctrl+Y:** the previous theme, wrapping round at the start.
-  - **Ctrl+R:** back to the default theme, `textual-dark`.
-  - Each press names the new theme in a notice.
+  - **Ctrl+R:** back to the theme the app starts with: `textual-dark`, or the one set by the `TEXTUAL_THEME` environment variable.
+  - Each press names the new theme in a notice, which replaces the previous one, so quick presses don't stack notices over the table.
   - Ctrl+Shift+T and Ctrl+Alt+T were tried first and rejected: the desktop and terminal take them (a new tab, opening a terminal), and terminals without the kitty keyboard protocol send both as Ctrl+T.
     Ctrl+Shift+R was tried for the reset, to keep it apart from `r` (refresh), but those terminals send it as plain Ctrl+R.
 
