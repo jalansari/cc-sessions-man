@@ -260,16 +260,19 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
             if hit and hit["mtime"] == st.st_mtime and hit["size"] == st.st_size:
                 s = _from_cache(hit["session"])
             else:
-                s = parse_transcript(path)
+                try:
+                    s = parse_transcript(path)
+                except FileNotFoundError:
+                    raise
+                except Exception:
+                    # A transcript in a shape we don't understand: skip it rather than let
+                    # one file hide every session. Remembered as "nothing to show" until the
+                    # file changes, so it isn't re-read (and the cache rewritten) every scan.
+                    s = None
                 hit = {"mtime": st.st_mtime, "size": st.st_size, "session": _to_cache(s)}
                 changed = True
         except FileNotFoundError:
             # Deleted between glob() and reading it (another viewer, or Claude Code cleanup).
-            changed = True
-            continue
-        except Exception:
-            # A transcript in a shape we don't understand: skip it rather than let one
-            # file hide every session. Not cached, so it's tried again next scan.
             changed = True
             continue
         entries[key] = hit

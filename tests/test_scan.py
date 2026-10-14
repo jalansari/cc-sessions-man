@@ -337,3 +337,32 @@ def test_malformed_scan_cache_is_ignored(tmp_path):
                  json.dumps({"version": 1, "entries": {str(proj / "a.jsonl"): "nope"}})):
         cache.write_text(junk)
         assert [s.session_id for s in scan(tmp_path, cache)] == ["a"]
+
+
+def test_unparseable_transcript_is_not_reread_every_scan(tmp_path, monkeypatch):
+    import cc_sessions_man.scan as scan_mod
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    write(proj / "bad.jsonl", [user("x")])
+    write(proj / "ok.jsonl", [user("hi"), assistant([{"type": "text", "text": "done"}])])
+    real = scan_mod.parse_transcript
+    attempts = []
+
+    def picky(path):
+        attempts.append(path.stem)
+        if path.stem == "bad":
+            raise TypeError("shape we don't understand")
+        return real(path)
+
+    monkeypatch.setattr(scan_mod, "parse_transcript", picky)
+    cache = tmp_path / "scan.json"
+    assert [s.session_id for s in scan(tmp_path, cache)] == ["ok"]
+    written = cache.stat().st_mtime_ns
+    attempts.clear()
+    assert [s.session_id for s in scan(tmp_path, cache)] == ["ok"]
+    assert attempts == []  # neither re-read...
+    assert cache.stat().st_mtime_ns == written  # ...nor the cache rewritten
+
+    write(proj / "bad.jsonl", [user("x"), user("y")])  # the file changes: try again
+    scan(tmp_path, cache)
+    assert attempts == ["bad"]
