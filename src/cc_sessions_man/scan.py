@@ -34,7 +34,7 @@ def home_arg(value: str) -> Path:
 
 CLAUDE_HOME = claude_home_from_env()
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", "").strip() or Path.home() / ".cache") / "cc-sessions-man"
-SCAN_CACHE_VERSION = 2  # bump when Session fields or parsing change
+SCAN_CACHE_VERSION = 3  # bump when Session fields or parsing change
 
 # Structural states, decided without a model.
 RUNNING = "running"
@@ -57,6 +57,7 @@ class Session:
     last_user_prompt: str = ""
     last_assistant_text: str = ""
     context_tokens: int = 0  # context size at Claude's last reply (input + cached input tokens)
+    model: str = ""  # model ID of Claude's last reply, e.g. claude-opus-5-5
 
 
 def _proc_start(pid: int) -> str | None:
@@ -167,6 +168,10 @@ def parse_transcript(path: Path) -> Session | None:
             content = message.get("content") if isinstance(message, dict) else None
             if t == "assistant" and (tokens := _context_tokens(message)):
                 s.context_tokens = tokens  # the latest reply's context is the session's current size
+            # Claude Code writes "<synthetic>" on placeholder replies it makes itself (errors, interrupts).
+            model = _str(message.get("model")) if isinstance(message, dict) else ""
+            if t == "assistant" and model and model != "<synthetic>":
+                s.model = model  # the latest, since /model can switch partway
             if t == "user":
                 if _is_tool_result(content):
                     last_kind = "tool_result"

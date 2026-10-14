@@ -19,7 +19,7 @@ The gaps in the numbering leave room for new statuses, and Done stays last at 99
 | 99 | Done | Nothing left to do | Haiku |
 
 Ranks are defined in `STATUS_RANK` in `src/cc_sessions_man/cli.py`.
-The `--json` output includes each session's `status_rank` and `context_tokens`.
+The `--json` output includes each session's `status_rank`, `context_tokens` and `model`.
 
 Only sessions that ended on a normal reply go to the model.
 For each one, the model gets your last prompt and Claude's final message.
@@ -64,12 +64,15 @@ uv run cc-sessions-ui --refresh-interval 60   # auto-refresh every minute; 0 tur
 ```
 
 The UI is built with [Textual](https://textual.textualize.io/).
-It shows a table of sessions with status, start time, last activity, title, folder and context size.
+It shows a table of sessions with status, start time, last activity, title, folder, context size and model.
 
 - **Context** is how full the session's context was at Claude's last reply: the input tokens it was given, including cached ones.
   It's shown as, for example, `134k` or `1.0M`, and is blank for sessions with no recorded usage.
   Its colour shows the band: blue below 250k, green from 250k, yellow from 500k, and red from 800k.
   Click the heading to sort largest first.
+- **Model** is the model that wrote Claude's latest reply in the main conversation, shortened to, for example, `opus-5-5` or `haiku-4-5`.
+  Subagents' models aren't shown. After a `/model` switch, it changes once Claude next replies. The details panel shows the full model ID.
+  It's blank for sessions with no reply yet.
 - Folders longer than 40 characters keep their end, for example `…/my-app/.claude/skills/changelog-writer`. The details panel shows the full path.
 
 - The list appears as soon as the transcripts are scanned, using cached labels.
@@ -92,7 +95,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 - Click a column header to sort by that column alone. Click it again to reverse the order.
 - The headings show the current sort: `^1` marks the primary sort column, `^2` the secondary and `^3` the tertiary.
   Status sorts by rank (needs you first), last activity newest first, and folder A to Z.
-- The panel at the bottom shows the selected session's outstanding work, full ID and folder.
+- The panel at the bottom shows the selected session's outstanding work, full ID, folder and full model ID.
 
 | Key | Action |
 |---|---|
@@ -175,7 +178,7 @@ uv run cc-sessions --claude-home ~/.claude-work --pending
 
 Two caches live in `~/.cache/cc-sessions-man/` (or `$XDG_CACHE_HOME/cc-sessions-man/`):
 
-- `scan-<hash>.json` holds a summary of each transcript, one file per Claude config directory: title, times, state, and the last prompt and reply.
+- `scan-<hash>.json` holds a summary of each transcript, one file per Claude config directory: title, times, state, context size, model, and the last prompt and reply.
   A transcript is only read again when its size or modification time changes.
   This keeps startup fast; reading all transcripts in full takes seconds.
 - `labels.json` holds the model's label for each session, keyed by session ID and the transcript's modification time.

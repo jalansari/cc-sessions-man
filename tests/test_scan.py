@@ -240,6 +240,8 @@ def test_odd_transcript_lines_are_skipped(tmp_path):
         json.dumps({"type": "user", "message": None, "cwd": "/w", "timestamp": "2026-10-01T10:00:00Z"}),
         json.dumps({"type": "custom-title", "customTitle": 7}),
         json.dumps({"type": "user", "message": {"content": "real prompt"}, "cwd": None, "timestamp": "2026-10-01T10:00:00Z"}),
+        json.dumps({"type": "assistant", "message": None, "timestamp": "2026-10-01T10:00:30Z"}),
+        json.dumps({"type": "assistant", "message": "oops", "timestamp": "2026-10-01T10:00:40Z"}),
         json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": None}, {"type": "text", "text": "ok"}]},
                     "timestamp": "2026-10-01T10:01:00Z"}),
     ]) + "\n")
@@ -412,3 +414,34 @@ def test_context_colour_bands():
     cases = {0: blue, 249_999: blue, 250_000: green, 499_999: green, 500_000: yellow,
              799_999: yellow, 800_000: red, 1_500_000: red}
     assert {n: context_style(n) for n in cases} == cases
+
+
+def test_model_from_last_main_reply(tmp_path):
+    def reply(text, model, **kw):
+        return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}], "model": model},
+                "timestamp": "2026-10-01T10:01:00Z", **kw}
+
+    s = parse_transcript(write(tmp_path / "a.jsonl", [
+        user("go"), reply("first", "claude-opus-5"),
+        user("more"), reply("second", "claude-opus-5-5"),  # switched with /model
+        reply("interrupted", "<synthetic>"),  # Claude Code's own placeholder, not a model
+        reply("subagent", "claude-haiku-4-5", isSidechain=True),  # not the main thread
+    ]))
+    assert s.model == "claude-opus-5-5"
+
+    odd = parse_transcript(write(tmp_path / "b.jsonl", [user("go"), reply("x", None)]))
+    assert odd.model == ""
+
+
+def test_short_model():
+    from cc_sessions_man.ui import short_model
+    cases = {
+        "claude-opus-5-5": "opus-5-5",
+        "claude-haiku-4-5-20251001": "haiku-4-5",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "sonnet-4-5",  # Bedrock
+        "claude-sonnet-4-5@20250929": "sonnet-4-5",  # Vertex
+        "anthropic/claude-fable-5-1": "fable-5-1",  # proxy
+        "": "",
+    }
+    assert {m: short_model(m) for m in cases} == cases
+    assert len(short_model("some-other-provider-model-with-a-very-long-name")) <= 20

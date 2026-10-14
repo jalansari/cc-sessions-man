@@ -52,6 +52,7 @@ def test_cli_reports_failed_batches_as_error(tmp_path, monkeypatch, capsys):
     rows = json.loads(capsys.readouterr().out)
     assert {r["group"] for r in rows} == {"error"}
     assert all(r["detail"] == "rate limited" and r["status_rank"] == 6 for r in rows)
+    assert all(r["model"] == "" for r in rows)  # no model recorded in these transcripts
     assert not cli.CACHE_PATH.exists() or json.loads(cli.CACHE_PATH.read_text()) == {}
 
 

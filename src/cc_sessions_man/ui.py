@@ -1,7 +1,9 @@
 """cc-sessions-ui: a terminal UI for browsing Claude Code sessions."""
 
 import argparse
+import functools
 import os
+import re
 import shutil
 import sys
 from dataclasses import replace
@@ -41,7 +43,7 @@ GROUP_STYLE = {
 
 COLUMNS = [
     ("status", "Status"), ("started", "Started"), ("last", "Last activity"),
-    ("title", "Title"), ("cwd", "Folder"), ("context", "Context"),
+    ("title", "Title"), ("cwd", "Folder"), ("context", "Context"), ("model", "Model"),
 ]
 
 # How each column sorts: key function and whether it runs descending by default.
@@ -52,6 +54,7 @@ SORT_KEYS = {
     "title": (lambda r: r.session.title.lower(), False),
     "cwd": (lambda r: r.session.cwd, False),
     "context": (lambda r: r.session.context_tokens, True),  # largest first
+    "model": (lambda r: (not r.session.model, short_model(r.session.model)), False),  # A to Z, blanks last
 }
 
 # The orders the s key cycles through: (primary, secondary, tertiary).
@@ -63,7 +66,7 @@ SORT_MODES = [
 ]
 COLUMN_NAMES = {
     "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
-    "context": "context size",
+    "context": "context size", "model": "model",
 }
 TITLE_MAX = 50
 FOLDER_MAX = 40
@@ -114,6 +117,22 @@ CONTEXT_BANDS = [
 
 def context_style(n: int) -> str:
     return next(style for limit, style in CONTEXT_BANDS if limit is None or n < limit)
+
+
+# Provider prefixes ("us.anthropic.claude-", "anthropic/claude-") and suffixes: a date
+# ("-20251001", Vertex "@20250929") and a Bedrock version ("-v1:0").
+MODEL_PREFIX = re.compile(r"^.*?claude-")
+MODEL_SUFFIX = re.compile(r"(?:[-@]\d{8})?(?:-v\d+(?::\d+)?)?$")
+MODEL_MAX = 20
+
+
+@functools.cache  # called for every row on each render and sort
+def short_model(model: str) -> str:
+    """Model ID for the table: claude-opus-5-5 -> opus-5-5, claude-haiku-4-5-20251001 -> haiku-4-5.
+
+    Bedrock and Vertex IDs shorten the same way; anything else is capped at MODEL_MAX.
+    """
+    return truncate_words(MODEL_SUFFIX.sub("", MODEL_PREFIX.sub("", model, count=1), count=1), MODEL_MAX)
 
 
 def local_time(ts: str) -> str:
@@ -519,6 +538,7 @@ class SessionsApp(App[Session | None]):
                 truncate_words(s.title),
                 truncate_start(short_path(s.cwd)),
                 Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
+                short_model(s.model),
                 key=s.session_id,
             )
         if selected:
@@ -564,6 +584,8 @@ class SessionsApp(App[Session | None]):
             text.append(f": {r.detail}")
         text.append(f"\n{s.title}\n", style="bold")
         text.append(f"{s.session_id}  ·  {short_path(s.cwd)}", style="dim")
+        if s.model:
+            text.append(f"  ·  {s.model}", style="dim")
         detail.update(text)
 
     # Events and actions -----------------------------------------------------

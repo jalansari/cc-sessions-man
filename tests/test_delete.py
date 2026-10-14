@@ -518,11 +518,34 @@ def test_context_column_shows_and_sorts(tmp_path, monkeypatch):
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
         labels = [str(c.label) for c in table.columns.values()]
-        assert labels[-1] == "Context"
-        cells = {r.session.session_id: str(table.get_row(r.session.session_id)[-1]) for r in app.rows}
+        assert "Context" in labels
+        cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "context")) for r in app.rows}
         assert cells == {"small": "1.5k", "big": "250k"}
         app.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "context"})()})())
         assert [r.session.session_id for r in app.visible_rows()] == ["big", "small"]  # largest first
         assert "Context ^1" in [str(c.label) for c in table.columns.values()]
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["o", "h", "none"])
+    for sid, model in (("o", "claude-opus-5-5"), ("h", "claude-haiku-4-5-20251001")):
+        path = home / "projects" / "-w" / f"{sid}.jsonl"
+        with path.open("a") as fh:
+            fh.write("\n" + json.dumps({"type": "assistant", "timestamp": "2026-10-01T00:00:30Z", "message": {
+                "model": model, "content": [{"type": "text", "text": "ok"}]}}) + "\n")
+
+    async def steps(app, pilot):
+        table = app.query_one(ui.DataTable)
+        labels = [str(c.label) for c in table.columns.values()]
+        assert labels[-2:] == ["Context", "Model"]
+        cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "model")) for r in app.rows}
+        assert cells == {"o": "opus-5-5", "h": "haiku-4-5", "none": ""}
+        app.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "model"})()})())
+        assert [r.session.session_id for r in app.visible_rows()] == ["h", "o", "none"]  # A to Z, blanks last
+        table.move_cursor(row=0)
+        await pilot.pause()
+        assert "claude-haiku-4-5-20251001" in str(app.query_one("#detail", ui.Static).render())
 
     run_ui(home, monkeypatch, steps)
