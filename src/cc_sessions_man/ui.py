@@ -617,7 +617,9 @@ class SessionsApp(App[Session | None]):
     # Events and actions -----------------------------------------------------
 
     def on_data_table_row_highlighted(self, _event) -> None:
-        self.update_detail()
+        # A highlight queued by a rebuild can arrive after quitting has removed the table.
+        if self.query(DataTable):
+            self.update_detail()
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col = event.column_key.value

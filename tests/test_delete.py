@@ -591,3 +591,14 @@ def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypa
         assert settled["cwd"] == len("Folder ^1") + 2  # plus cell padding
 
     run_ui(home, monkeypatch, steps)
+
+
+def test_row_highlight_after_the_table_is_gone_is_ignored(tmp_path, monkeypatch):
+    # On quit, a highlight event left queued by a redraw can arrive after the table is removed.
+    home = make_home(tmp_path, ["a"])
+
+    async def steps(app, pilot):
+        await app.query_one(ui.DataTable).remove()
+        app.on_data_table_row_highlighted(None)  # used to raise NoMatches
+
+    run_ui(home, monkeypatch, steps)
