@@ -136,3 +136,15 @@ def test_session_deleted_mid_batch_is_not_cached(tmp_path, monkeypatch):
     labels = classify_mod.classify(todo, cache, batch_size=5, jobs=1)
     assert set(labels) == {"kept"}
     assert set(json.loads((tmp_path / "labels.json").read_text())) == {"kept"}
+
+
+def test_cache_file_that_is_not_an_object_starts_empty(tmp_path):
+    from cc_sessions_man.scan import ENDED
+
+    for junk in ("[]", "null", "42", '"text"'):
+        path = tmp_path / "labels.json"
+        path.write_text(junk)
+        cache = Cache(path)
+        assert cache.data == {}
+        cached, todo = cache.partition([Session(session_id="a", path=Path("a"), mtime=1.0, state=ENDED)])
+        assert (cached, len(todo)) == ({}, 1)

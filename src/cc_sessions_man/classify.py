@@ -129,10 +129,7 @@ class Cache:
         self.path = path
         self._lock = threading.Lock()
         self._dropped: set[str] = set()  # deleted here; don't let a merge bring them back
-        try:
-            self.data = json.loads(path.read_text())
-        except (OSError, ValueError):
-            self.data = {}
+        self.data = self._read_disk()  # {} if missing, unreadable, or not a JSON object
 
     def reload(self) -> None:
         """Merge in labels saved by other runs (e.g. the CLI). The newer label wins."""
