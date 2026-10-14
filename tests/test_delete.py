@@ -452,3 +452,47 @@ def test_s_toggles_folder_sort(tmp_path, monkeypatch):
         assert order() == ["a-act-new", "b-act-old", "a-act-old", "a-done-new", "b-done-new"]  # back again
 
     run_ui(tmp_path, monkeypatch, steps)
+
+
+def test_trash_session_tries_every_file_and_reports_failures(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["aaa"])
+    s = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
+    moved = []
+
+    def flaky(p):
+        if p.name == "aaa" and p.parent.name == "file-history":
+            raise OSError("cross-device trash")
+        moved.append(p.relative_to(home).as_posix())
+
+    monkeypatch.setattr(delete_mod, "send2trash", flaky)
+    with pytest.raises(delete_mod.PartialDelete) as exc:
+        delete_mod.trash_session(s, home)
+    assert "projects/-w/aaa.jsonl" in moved and "session-env/aaa" in moved  # carried on past the failure
+    assert [p.parent.name for p, _ in exc.value.failed] == ["file-history"]
+
+
+def test_ui_partial_delete_still_removes_the_row(tmp_path, monkeypatch):
+    import shutil
+
+    home = make_home(tmp_path, ["aaa", "bbb"])
+    notices = []
+
+    def flaky(p):
+        if p.parent.name == "file-history":
+            raise OSError("permission denied")
+        shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+    monkeypatch.setattr(delete_mod, "send2trash", flaky)
+
+    async def steps(app, pilot):
+        app.notify = lambda msg, **kw: notices.append(kw.get("title"))
+        app.cache.put(app.rows[0].session, "done", "")
+        target = app.current_row().session.session_id
+        app.delete_sessions([app.current_row().session])
+        await pilot.pause()
+        assert target not in {r.session.session_id for r in app.rows}
+        assert target not in app.cache.data
+
+    run_ui(home, monkeypatch, steps)
+    assert "Deleted, but some files were left behind" in notices
+    assert "Delete failed" not in notices

@@ -552,13 +552,17 @@ class SessionsApp(App[Session | None]):
         self.push_screen(ConfirmDelete(targets), done)
 
     def delete_sessions(self, targets: list[Session]) -> None:
-        deleted, failed = set(), []
+        deleted, failed, leftovers = set(), [], []
         for s in targets:
             try:
                 trash_session(s, self.claude_home)
             except Exception as exc:
-                failed.append(f"{s.session_id[:8]}: {exc}")
-                continue
+                if s.path.exists():
+                    failed.append(f"{s.session_id[:8]}: {exc}")
+                    continue
+                # The transcript is in the Trash, so the session is gone even though some
+                # side files weren't moved. Drop the row; keeping it would point at nothing.
+                leftovers.append(f"{s.session_id[:8]}: {exc}")
             deleted.add(s.session_id)
             self.cache.drop(s.session_id)
         self.cache.save()
@@ -570,6 +574,8 @@ class SessionsApp(App[Session | None]):
             self.notify(f"Moved {len(deleted)} session(s) to the Trash.")
         for msg in failed:
             self.notify(msg, title="Delete failed", severity="error")
+        for msg in leftovers:
+            self.notify(msg, title="Deleted, but some files were left behind", severity="warning", timeout=10)
 
     def action_toggle_folder_sort(self) -> None:
         """s: switch between folder > status > date and the usual status > date."""

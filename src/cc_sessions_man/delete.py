@@ -21,6 +21,16 @@ def session_files(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
     return [p for p in candidates if p.exists()]
 
 
+class PartialDelete(Exception):
+    """Some of a session's files went to the Trash and some didn't."""
+
+    def __init__(self, moved: list[Path], failed: list[tuple[Path, Exception]]):
+        self.moved = moved
+        self.failed = failed
+        names = ", ".join(f"{p.name}: {exc}" for p, exc in failed)
+        super().__init__(f"couldn't move {len(failed)} file(s) to the Trash: {names}")
+
+
 def trash_session(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
     """Trash one session's files. Returns the paths moved.
 
@@ -29,8 +39,14 @@ def trash_session(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
     """
     if s.session_id in live_sessions(home):
         raise ValueError(f"session {s.session_id} is still running")
-    moved = []
-    for p in session_files(s, home):
-        send2trash(p)
-        moved.append(p)
+    moved, failed = [], []
+    for p in session_files(s, home):  # transcript first
+        try:
+            send2trash(p)
+        except Exception as exc:  # keep going: leave as little behind as possible
+            failed.append((p, exc))
+        else:
+            moved.append(p)
+    if failed:
+        raise PartialDelete(moved, failed)
     return moved
