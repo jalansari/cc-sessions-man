@@ -112,6 +112,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `u` | Unmark all. Does nothing when nothing is marked |
 | `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
+| `m` | Move the selected session to another working folder. Enter moves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
@@ -119,7 +120,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `q` | Quit |
 
 Use the drop-down at the top left to show a single group.
-A session in the Running group is open in another terminal, so it can't be resumed or deleted from here.
+A session in the Running group is open in another terminal, so it can't be resumed, renamed, moved or deleted from here.
 
 ### Renaming sessions
 
@@ -130,6 +131,23 @@ Renaming saves the title the same way Claude Code's `/rename` does, so `claude -
 
 The session's label is kept, so a rename doesn't trigger classification again.
 A running session can't be renamed from here; use `/rename` inside it.
+
+### Moving sessions
+
+`m` moves a session to another working folder, for example after you moved or renamed a repo, or started Claude in the wrong place.
+Type the folder (it must exist; `~` works) and press Enter.
+
+- Every working folder recorded in the transcript (`cwd`) is changed to the new folder.
+  A subfolder the session changed into keeps its place if the same subfolder exists in the new folder; otherwise it becomes the new folder.
+- The transcript and its `<session-id>/` folder move to the new folder's project folder under `~/.claude/projects/`, named the way Claude Code names it.
+- After the move:
+  - the session shows the new folder, and resuming it from here runs Claude there;
+  - it's listed in that folder's `claude --resume` picker, and `claude --continue` there picks it up.
+- The label is kept, so a move doesn't trigger classification again.
+- The move is all or nothing: the new copy is saved to disk before the original is removed, and if anything fails, or the session is resumed elsewhere mid-move, everything stays where it was.
+
+Not changed: paths inside messages and tool calls, the subagent transcripts, and the `/rewind` file backups, which still restore files to their original paths.
+`claude --resume <session-id>` finds a session from any folder, so a move doesn't change whether it can be resumed, only which folder it belongs to.
 
 ### Deleting sessions
 

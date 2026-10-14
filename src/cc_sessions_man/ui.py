@@ -26,8 +26,9 @@ from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Sta
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, refresh_interval_arg, short_path
 from .delete import trash_session
+from .move import move_session
 from .rename import rename_session
-from .scan import Session, claude_env, live_sessions, scan
+from .scan import Session, claude_env, live_sessions, parse_transcript, scan
 
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
@@ -252,6 +253,39 @@ class RenameSession(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class MoveSession(ModalScreen[Path | None]):
+    """Ask for the folder to move a session to. Enter moves, Esc cancels."""
+
+    CSS = """
+    MoveSession { align: center middle; }
+    #move-dialog {
+        width: 80; height: auto; padding: 1 2;
+        border: thick $primary; background: $surface;
+    }
+    #move-dialog Label { margin-bottom: 1; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, session: Session):
+        super().__init__()
+        self.session = session
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="move-dialog"):
+            yield Label(f"Move session {self.session.session_id[:8]} to folder  (Enter = move, Esc = cancel)")
+            yield Input(value=short_path(self.session.cwd), id="new-folder")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        dest = Path(event.value.strip()).expanduser().resolve()
+        if not event.value.strip() or not dest.is_dir():
+            self.notify(f"{event.value.strip() or 'That'} isn't an existing folder.", severity="warning")
+            return
+        self.dismiss(dest)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class ConfirmDelete(ModalScreen[bool]):
     """Ask before trashing sessions. Cancel has focus, so a stray Enter is harmless."""
 
@@ -335,6 +369,7 @@ class SessionsApp(App[Session | None]):
         # Most terminals send plain Space for Shift+Space; this only fires where Shift is reported.
         Binding("shift+space", "clear_marks_or_mark", "Unmark all", show=False),
         Binding("n", "rename", "Rename"),
+        Binding("m", "move", "Move"),
         Binding("d", "delete", "Delete"),
         Binding("k", "toggle_keys", "Keys"),
         Binding("escape", "focus_table", "Table", show=False),
@@ -367,7 +402,7 @@ class SessionsApp(App[Session | None]):
         self.failed: dict[str, dict] = {}  # in-memory "error" labels, shown until reclassified
         # Deletes and renames made while a load is scanning, applied to its (older) results.
         self.load_deleted: set[str] = set()
-        self.load_renamed: dict[str, tuple[str, float]] = {}
+        self.load_changed: dict[str, dict] = {}  # renames and moves, by session: Session fields
         self.shown_signature = None  # what show() last rendered, to skip no-change refreshes
         self.error_notified = False  # shown the "classification failed" notice this run
 
@@ -396,7 +431,7 @@ class SessionsApp(App[Session | None]):
         # claude, so a second run would classify the same sessions twice.
         self.loading = True
         self.error_notified = False
-        self.load_deleted, self.load_renamed = set(), {}
+        self.load_deleted, self.load_changed = set(), {}
         classify_now = self.use_llm and not (auto and self.classify_paused)
         self.load(quiet, classify_now, dict(self.failed))
 
@@ -494,11 +529,16 @@ class SessionsApp(App[Session | None]):
 
     @ignore_after_quit  # called from the load worker, which can finish after quitting
     def show(self, sessions: list[Session], labels: dict[str, dict], classifying: set[str] | None = None) -> None:
-        # The scan may predate a delete or rename made while it ran: re-apply those.
-        sessions = [s for s in sessions if s.session_id not in self.load_deleted]
+        # The scan may predate a delete, rename or move made while it ran: re-apply those.
+        # A scan during a move can see the transcript in both folders; keep one.
+        seen = set()
+        sessions = [
+            s for s in sessions
+            if s.session_id not in self.load_deleted and not (s.session_id in seen or seen.add(s.session_id))
+        ]
         for s in sessions:
-            if s.session_id in self.load_renamed:
-                s.title, s.mtime = self.load_renamed[s.session_id]
+            for field, value in self.load_changed.get(s.session_id, {}).items():
+                setattr(s, field, value)
         if classifying is not None:
             self.classifying = classifying - self.load_deleted
         # Keep a mark unless its session is really gone; a transcript skipped on one scan
@@ -752,9 +792,51 @@ class SessionsApp(App[Session | None]):
         if label:
             self.cache.put(s, label["label"], label["pending"])
             self.cache.save()
-        self.load_renamed[s.session_id] = (title, s.mtime)  # in case a scan in progress has the old one
+        # In case a scan in progress has the old title.
+        self.load_changed.setdefault(s.session_id, {}).update(title=title, mtime=s.mtime)
         self.render_table()
         self.notify(f"Renamed to “{title}”.")
+
+    def action_move(self) -> None:
+        r = self.current_row()
+        if r is None:
+            return
+        if r.session.session_id in live_sessions(self.claude_home):
+            self.notify("That session is still open; exit it first.", severity="warning")
+            return
+
+        def done(dest: Path | None) -> None:
+            if dest:
+                self.apply_move(r, dest)
+
+        self.push_screen(MoveSession(r.session), done)
+
+    def apply_move(self, r: Row, dest: Path) -> None:
+        # An auto-refresh while the dialog was open replaces the rows: use the current one.
+        r = next((x for x in self.rows if x.session.session_id == r.session.session_id), r)
+        s = r.session
+        label = self.cache.get(s)
+        try:
+            path = move_session(s, dest, self.claude_home)
+        except Exception as exc:
+            self.notify(str(exc), title="Move failed", severity="error")
+            return
+        try:
+            moved = parse_transcript(path)
+        except OSError:
+            moved = None
+        if moved is None:  # gone since (e.g. Claude Code cleanup): the next scan drops it
+            self.render_table()
+            self.notify("Moved, but the transcript has since disappeared.", severity="warning")
+            return
+        s.path, s.cwd, s.mtime = moved.path, moved.cwd, moved.mtime
+        # Only working folders changed, so the label still fits: carry it to the new mtime.
+        if label:
+            self.cache.put(s, label["label"], label["pending"])
+            self.cache.save()
+        self.load_changed.setdefault(s.session_id, {}).update(path=s.path, cwd=s.cwd, mtime=s.mtime)
+        self.render_table()
+        self.notify(f"Moved to {short_path(s.cwd)}. Resuming it now runs there.")
 
     def action_delete(self) -> None:
         if self.marked:
