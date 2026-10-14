@@ -4,6 +4,7 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from textual.widgets._data_table import default_cell_formatter
 
 import cc_sessions_man.delete as delete_mod
 import cc_sessions_man.ui as ui
@@ -600,5 +601,21 @@ def test_row_highlight_after_the_table_is_gone_is_ignored(tmp_path, monkeypatch)
     async def steps(app, pilot):
         await app.query_one(ui.DataTable).remove()
         app.on_data_table_row_highlighted(None)  # used to raise NoMatches
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_titles_and_folders_are_shown_literally_not_as_markup(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["crash", "lost"])
+    titles = {"crash": "fix the [/] closing tag", "lost": "arr[0] = x[i] and [bold]not bold"}
+    for sid, title in titles.items():
+        with (home / "projects" / "-w" / f"{sid}.jsonl").open("a") as fh:
+            fh.write("\n" + json.dumps({"type": "custom-title", "customTitle": title}) + "\n")
+
+    async def steps(app, pilot):
+        table = app.query_one(ui.DataTable)
+        shown = {r.session.session_id: table.get_cell(r.session.session_id, "title") for r in app.rows}
+        # The cell as drawn: a str cell would be parsed as markup ("[/]" raised MarkupError).
+        assert {k: default_cell_formatter(v).plain for k, v in shown.items()} == titles
 
     run_ui(home, monkeypatch, steps)

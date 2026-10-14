@@ -540,19 +540,23 @@ class SessionsApp(App[Session | None]):
             table.add_column(Text(label, justify="right") if key in RIGHT_ALIGNED else label, key=key, width=width)
 
     def row_cells(self, r: Row) -> tuple:
-        """One table row's cells, in COLUMNS order."""
+        """One table row's cells, in COLUMNS order.
+
+        All Text, never str: the table reads a str cell as Rich markup, so a title like
+        "arr[0] = x[i]" lost its brackets and one containing "[/]" raised MarkupError.
+        """
         s = r.session
         status = self.status_text(r)
         if s.session_id in self.marked:
             status = Text.assemble(("● ", "bold #f25f5c"), status)
         return (
             status,
-            local_time(s.started),
-            local_time(s.last_timestamp),
-            truncate_words(s.title),
-            truncate_start(short_path(s.cwd)),
+            Text(local_time(s.started)),
+            Text(local_time(s.last_timestamp)),
+            Text(truncate_words(s.title)),
+            Text(truncate_start(short_path(s.cwd))),
             Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
-            short_model(s.model),
+            Text(short_model(s.model)),
         )
 
     def render_table(self) -> None:
