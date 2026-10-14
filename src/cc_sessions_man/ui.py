@@ -836,7 +836,8 @@ class SessionsApp(App[Session | None]):
             self.cache.save()
         self.load_changed.setdefault(s.session_id, {}).update(path=s.path, cwd=s.cwd, mtime=s.mtime)
         self.render_table()
-        self.notify(f"Moved to {short_path(s.cwd)}. Resuming it now runs there.")
+        # Memory belongs to a folder, shared by its sessions, so it isn't moved: say which one applies.
+        self.notify(f"Moved to {short_path(s.cwd)}. Resuming it now runs there and uses that folder's memory.")
 
     def action_delete(self) -> None:
         if self.marked:

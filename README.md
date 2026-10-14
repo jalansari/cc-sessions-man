@@ -147,6 +147,9 @@ Type the folder (it must exist; `~` works) and press Enter.
 - The move is all or nothing: the new copy is saved to disk before the original is removed, and if anything fails, or the session is resumed elsewhere mid-move, everything stays where it was.
 
 Not changed: paths inside messages and tool calls, the subagent transcripts, and the `/rewind` file backups, which still restore files to their original paths.
+
+Memory isn't moved or copied. Claude Code's auto memory (`projects/<project>/memory/`) belongs to a folder, not a session, and every session in that folder shares it.
+So it stays with the old folder, and once moved, the session uses the new folder's memory, like any other session started there.
 `claude --resume <session-id>` finds a session from any folder, so a move doesn't change whether it can be resumed, only which folder it belongs to.
 
 ### Deleting sessions
