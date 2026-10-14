@@ -207,3 +207,26 @@ def test_scan_cache_is_kept_per_home(tmp_path, monkeypatch):
         scan(home)
     assert parsed == ["home-a", "home-b"]  # second round fully cached for both
     assert scan_mod.scan_cache_path(homes[0]) != scan_mod.scan_cache_path(homes[1])
+
+
+def test_live_sessions_handles_bad_files_and_other_users(tmp_path, monkeypatch):
+    import errno
+
+    from cc_sessions_man.scan import live_sessions
+
+    d = tmp_path / "sessions"
+    d.mkdir()
+    (d / "list.json").write_text("[1, 2]")
+    (d / "strpid.json").write_text(json.dumps({"pid": "123", "sessionId": "s"}))
+    (d / "nosid.json").write_text(json.dumps({"pid": 5}))
+    (d / "broken.json").write_text("{not json")
+    (d / "other-user.json").write_text(json.dumps({"pid": 111, "sessionId": "theirs"}))
+    (d / "dead.json").write_text(json.dumps({"pid": 222, "sessionId": "gone"}))
+
+    def fake_kill(pid, sig):
+        if pid == 111:
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        raise ProcessLookupError(errno.ESRCH, "No such process")
+
+    monkeypatch.setattr("os.kill", fake_kill)
+    assert set(live_sessions(tmp_path)) == {"theirs"}

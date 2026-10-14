@@ -63,9 +63,19 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
     for f in (home / "sessions").glob("*.json"):
         try:
             d = json.loads(f.read_text())
-            os.kill(d["pid"], 0)
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError):
             continue
+        if not isinstance(d, dict) or not isinstance(d.get("sessionId"), str):
+            continue
+        pid = d.get("pid")
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            continue
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            pass  # exists, but owned by another user (shared config dir, sudo): still running
+        except OSError:
+            continue  # no such process
         live[d["sessionId"]] = d
     return live
 
