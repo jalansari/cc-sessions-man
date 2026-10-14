@@ -61,7 +61,10 @@ def test_classify_sends_exactly_the_todo_list(tmp_path, monkeypatch):
         return [{"id": i, "label": "done", "pending": ""} for i in ids]
 
     monkeypatch.setattr(classify_mod, "_run_claude", fake_run)
-    todo = [Session(session_id=f"s{i}", path=Path("x"), mtime=1.0, state=ENDED) for i in range(7)]
+    todo = []
+    for i in range(7):
+        (tmp_path / f"s{i}.jsonl").write_text("{}\n")
+        todo.append(Session(session_id=f"s{i}", path=tmp_path / f"s{i}.jsonl", mtime=1.0, state=ENDED))
     cache = Cache(tmp_path / "labels.json")
     labels = classify_mod.classify(todo, cache, batch_size=3, jobs=2)
     assert sorted(sent) == sorted(labels) == [s.session_id for s in todo]
@@ -112,3 +115,24 @@ def test_merge_keeps_the_label_for_the_newer_transcript(tmp_path):
     assert ui_cache.get(sess("x", mtime=2.0))["label"] == "done"
     ui_cache.save()
     assert json.loads(path.read_text())["x"]["mtime"] == 2.0  # and a save doesn't undo it
+
+
+def test_session_deleted_mid_batch_is_not_cached(tmp_path, monkeypatch):
+    import cc_sessions_man.classify as classify_mod
+    from cc_sessions_man.scan import ENDED
+
+    todo = []
+    for sid in ("kept", "deleted"):
+        p = tmp_path / f"{sid}.jsonl"
+        p.write_text("{}\n")
+        todo.append(Session(session_id=sid, path=p, mtime=1.0, state=ENDED))
+
+    def run_then_user_deletes(prompt, model):
+        (tmp_path / "deleted.jsonl").unlink()  # trashed from the UI while claude was working
+        return [{"id": s.session_id, "label": "done", "pending": ""} for s in todo]
+
+    monkeypatch.setattr(classify_mod, "_run_claude", run_then_user_deletes)
+    cache = Cache(tmp_path / "labels.json")
+    labels = classify_mod.classify(todo, cache, batch_size=5, jobs=1)
+    assert set(labels) == {"kept"}
+    assert set(json.loads((tmp_path / "labels.json").read_text())) == {"kept"}

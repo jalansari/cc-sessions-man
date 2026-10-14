@@ -247,7 +247,9 @@ def classify(
             new = {}
             for item in items:
                 s = by_id.get(item.get("id"))
-                if s and item.get("label") in LABELS:
+                # Skip sessions deleted while their batch was in flight, so their label
+                # isn't cached for a transcript that no longer exists.
+                if s and item.get("label") in LABELS and s.path.exists():
                     cache.put(s, item["label"], item.get("pending", ""))
                     new[s.session_id] = cache.get(s)
             results.update(new)

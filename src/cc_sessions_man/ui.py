@@ -558,6 +558,7 @@ class SessionsApp(App[Session | None]):
             self.cache.drop(s.session_id)
         self.cache.save()
         self.marked -= deleted
+        self.classifying -= deleted
         self.rows = [r for r in self.rows if r.session.session_id not in deleted]
         self.render_table()
         if deleted:
