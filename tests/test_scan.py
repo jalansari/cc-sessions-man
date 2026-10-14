@@ -152,3 +152,23 @@ def test_scan_cache_reuses_unchanged_transcripts(tmp_path, monkeypatch):
 
     (proj / "a.jsonl").unlink()
     assert [s.session_id for s in scan(tmp_path, cache)] == ["b"]
+
+
+def test_scan_skips_transcript_deleted_mid_scan(tmp_path, monkeypatch):
+    import cc_sessions_man.scan as scan_mod
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    write(proj / "a.jsonl", [user("one"), assistant([{"type": "text", "text": "done"}])])
+    write(proj / "b.jsonl", [user("two"), assistant([{"type": "text", "text": "done"}])])
+
+    real = scan_mod.parse_transcript
+
+    def vanishing(path):
+        if path.stem == "a":
+            path.unlink()  # gone after glob() listed it
+        return real(path)
+
+    monkeypatch.setattr(scan_mod, "parse_transcript", vanishing)
+    cache = tmp_path / "scan.json"
+    assert [s.session_id for s in scan(tmp_path, cache)] == ["b"]
+    assert list(json.loads(cache.read_text())["entries"]) == [str(proj / "b.jsonl")]

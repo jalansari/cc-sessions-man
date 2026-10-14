@@ -196,15 +196,20 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
     sessions = []
     for path in (home / "projects").glob("*/*.jsonl"):
         key = str(path)
-        st = path.stat()
-        hit = old.get(key)
-        if hit and hit["mtime"] == st.st_mtime and hit["size"] == st.st_size:
-            entries[key] = hit
-            s = _from_cache(hit["session"])
-        else:
-            s = parse_transcript(path)
-            entries[key] = {"mtime": st.st_mtime, "size": st.st_size, "session": _to_cache(s)}
+        try:
+            st = path.stat()
+            hit = old.get(key)
+            if hit and hit["mtime"] == st.st_mtime and hit["size"] == st.st_size:
+                s = _from_cache(hit["session"])
+            else:
+                s = parse_transcript(path)
+                hit = {"mtime": st.st_mtime, "size": st.st_size, "session": _to_cache(s)}
+                changed = True
+        except FileNotFoundError:
+            # Deleted between glob() and reading it (another viewer, or Claude Code cleanup).
             changed = True
+            continue
+        entries[key] = hit
         if s is None:
             continue
         if s.session_id in live:  # live state is never cached
