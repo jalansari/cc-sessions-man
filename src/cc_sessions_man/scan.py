@@ -263,8 +263,9 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
             continue
         if s.session_id in live:  # live state is never cached
             s.state = RUNNING
-            s.live_status = live[s.session_id].get("status", "")
-            s.cwd = live[s.session_id].get("cwd", s.cwd)
+            # Only take string values: a null or odd field mustn't replace the transcript's cwd.
+            s.live_status = _str(live[s.session_id].get("status"))
+            s.cwd = _str(live[s.session_id].get("cwd")) or s.cwd
         sessions.append(s)
     if cache_path and (changed or entries.keys() != old.keys()):
         _save_scan_cache(cache_path, entries)

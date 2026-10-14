@@ -288,3 +288,16 @@ def test_live_sessions_detects_reused_pid(tmp_path, monkeypatch):
     # Without /proc (e.g. macOS), fall back to the PID check alone.
     monkeypatch.setattr(scan_mod, "_proc_start", lambda pid: None)
     assert set(live_sessions(tmp_path)) == {"same", "reused", "old-format"}
+
+
+def test_live_session_with_null_fields_keeps_transcript_cwd(tmp_path, monkeypatch):
+    proj = tmp_path / "projects" / "-w"
+    proj.mkdir(parents=True)
+    write(proj / "live.jsonl", [user("hi"), assistant([{"type": "text", "text": "hello"}])])
+    (tmp_path / "sessions").mkdir()
+    (tmp_path / "sessions" / "1.json").write_text(json.dumps(
+        {"pid": 1, "sessionId": "live", "cwd": None, "status": 5}))
+    monkeypatch.setattr("os.kill", lambda pid, sig: None)
+    monkeypatch.setattr("cc_sessions_man.scan._proc_start", lambda pid: None)
+    [s] = scan(tmp_path, cache_path=None)
+    assert (s.state, s.cwd, s.live_status) == (RUNNING, "/w", "")
