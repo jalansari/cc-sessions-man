@@ -96,7 +96,8 @@ It shows a table of sessions with status, start time, last activity, title, fold
 - The headings show the current sort: `^` for ascending (A to Z, lowest first) and `v` for descending (newest or largest first).
   With several sort columns, the marks are numbered by precedence: in `Status ^1` and `Last activity v2`, status is the primary sort and last activity the secondary.
   A single-column sort from a header click shows just `^` or `v`.
-  Columns leave room for their mark, so sorting never changes a column's width.
+- Column widths fit every session, not just the ones shown, and leave room for the sort mark.
+  Sorting, searching and filtering never change them; they only change when a refresh adds, removes or updates sessions.
   Status sorts by rank (needs you first), last activity newest first, and folder A to Z.
 - The panel at the bottom shows the selected session's outstanding work, full ID, folder and full model ID.
 

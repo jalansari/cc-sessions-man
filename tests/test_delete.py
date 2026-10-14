@@ -637,3 +637,28 @@ def test_titles_and_folders_are_shown_literally_not_as_markup(tmp_path, monkeypa
         assert {k: default_cell_formatter(v).plain for k, v in shown.items()} == titles
 
     run_ui(home, monkeypatch, steps)
+
+
+def test_searching_and_filtering_keep_column_widths(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["short", "a-much-longer-session-title-that-sets-the-width"])
+
+    async def steps(app, pilot):
+        table = app.query_one(ui.DataTable)
+        widths = lambda: {k.value: c.get_render_width(table) for k, c in table.columns.items()}
+        settled = widths()
+        app.query_one("#search", ui.Input).value = "short"  # hides the long title
+        await pilot.pause()
+        assert table.row_count == 1 and widths() == settled
+        app.query_one("#search", ui.Input).value = ""
+        app.query_one("#group", ui.Select).value = "decision"  # no rows at all
+        await pilot.pause()
+        assert table.row_count == 0 and widths() == settled
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_mark_room_fits_the_widest_sort_mark(monkeypatch):
+    assert ui.mark_room("title") == len(" v")  # never in a multi-column sort
+    assert ui.mark_room("status") == len(" v1")
+    monkeypatch.setattr(ui, "SORT_MODES", [tuple(f"k{i}" for i in range(10)) + ("status",)])
+    assert ui.mark_room("status") == len(" v11")  # 11 keys: two-digit numbers

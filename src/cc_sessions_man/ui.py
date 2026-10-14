@@ -71,8 +71,11 @@ RIGHT_ALIGNED = {"context"}
 
 
 def mark_room(key: str) -> int:
-    """Width a sort mark can add to a heading: " v", plus a digit in a multi-column sort."""
-    return 2 + any(key in mode for mode in SORT_MODES)
+    """Width a sort mark can add to a heading: " v", plus the number in a multi-column sort."""
+    numbered = any(key in mode for mode in SORT_MODES)
+    return 2 + (len(str(max(map(len, SORT_MODES)))) if numbered else 0)
+
+
 COLUMN_NAMES = {
     "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
     "context": "context size", "model": "model",
@@ -547,7 +550,9 @@ class SessionsApp(App[Session | None]):
         With several sort keys, the marks are numbered by precedence: Status ^1, Last activity v2.
 
         Each column gets an explicit width: the widest of its cells and its heading with the
-        longest mark it can get, so sorting never resizes a column or moves the headings.
+        longest mark it can get. `cells` holds every session's cells, not only the visible
+        ones, so sorting, searching and filtering never resize a column or move the headings;
+        widths only change when sessions are added, removed or change.
         Left to size itself, a new column starts as wide as its heading and the table only
         measures the cells once it's idle, so quick header clicks showed squashed frames.
         """
@@ -586,11 +591,12 @@ class SessionsApp(App[Session | None]):
         screen_offset = table.cursor_row - round(table.scroll_y)
         scroll_x = table.scroll_x
         rows = self.visible_rows()
-        cells = [self.row_cells(r) for r in rows]
+        # Every session's cells, so column widths don't depend on the search or group filter.
+        cells = {r.session.session_id: self.row_cells(r) for r in self.rows}
         table.clear(columns=True)  # re-add columns so the headings show the current sort
-        self.add_columns(table, cells)
-        for r, row in zip(rows, cells):
-            table.add_row(*row, key=r.session.session_id)
+        self.add_columns(table, list(cells.values()))
+        for r in rows:
+            table.add_row(*cells[r.session.session_id], key=r.session.session_id)
         if selected:
             index = next(
                 (i for i, r in enumerate(rows) if r.session.session_id == selected.session.session_id), None
