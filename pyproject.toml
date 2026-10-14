@@ -37,6 +37,7 @@ dev = [
     "black>=26",
     "flake8>=7",
     "isort>=9",
+    "pytest-cov>=7",
 ]
 
 [project.urls]

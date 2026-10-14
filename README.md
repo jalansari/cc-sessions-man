@@ -311,9 +311,10 @@ uv run pytest
 uv run black --check src tests benchmarks
 uv run isort --check-only src tests benchmarks
 uv run flake8 src tests benchmarks
+uv run pytest --cov=cc_sessions_man --cov-report=html  # coverage report in htmlcov/
 ```
 
-GitHub Actions runs the same checks and the tests on every pull request (`.github/workflows/pr.yml`).
+GitHub Actions runs the same checks and the tests on every pull request (`.github/workflows/pr.yml`), and keeps the HTML coverage report as a `cov-reports` artifact for 7 days.
 Publishing a GitHub release builds the package and uploads it to PyPI (`.github/workflows/publish.yml`), using the `TWINE_USERNAME` and `TWINE_PASSWORD` repository secrets.
 The release must have a new version in `pyproject.toml`: PyPI rejects a version it already has.
 
