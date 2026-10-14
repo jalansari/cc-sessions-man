@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-11T23:25:22",
+  "model": "haiku",
+  "sample_size": 160,
+  "seed": 1,
+  "reference": false,
+  "noise": {
+    "exact": null,
+    "needs_you": null
+  },
+  "runs": [
+    {
+      "batch_size": 5,
+      "jobs": 8,
+      "calls": 32,
+      "failed_calls": 0,
+      "labelled": 159,
+      "wall_s": 28.06,
+      "first_result_s": 5.91,
+      "sessions_per_s": 5.67,
+      "mean_call_s": 6.02,
+      "cost_usd": 0.0302,
+      "agree_exact": null,
+      "agree_needs_you": null
+    },
+    {
+      "batch_size": 10,
+      "jobs": 8,
+      "calls": 16,
+      "failed_calls": 0,
+      "labelled": 160,
+      "wall_s": 19.76,
+      "first_result_s": 7.6,
+      "sessions_per_s": 8.1,
+      "mean_call_s": 8.59,
+      "cost_usd": 0.027,
+      "agree_exact": null,
+      "agree_needs_you": null
+    },
+    {
+      "batch_size": 5,
+      "jobs": 12,
+      "calls": 32,
+      "failed_calls": 0,
+      "labelled": 159,
+      "wall_s": 19.99,
+      "first_result_s": 5.44,
+      "sessions_per_s": 7.95,
+      "mean_call_s": 6.19,
+      "cost_usd": 0.0164,
+      "agree_exact": null,
+      "agree_needs_you": null
+    },
+    {
+      "batch_size": 10,
+      "jobs": 12,
+      "calls": 16,
+      "failed_calls": 0,
+      "labelled": 160,
+      "wall_s": 16.78,
+      "first_result_s": 7.4,
+      "sessions_per_s": 9.53,
+      "mean_call_s": 9.01,
+      "cost_usd": 0.0134,
+      "agree_exact": null,
+      "agree_needs_you": null
+    },
+    {
+      "batch_size": 5,
+      "jobs": 16,
+      "calls": 32,
+      "failed_calls": 0,
+      "labelled": 160,
+      "wall_s": 16.7,
+      "first_result_s": 6.71,
+      "sessions_per_s": 9.58,
+      "mean_call_s": 6.97,
+      "cost_usd": 0.0166,
+      "agree_exact": null,
+      "agree_needs_you": null
+    },
+    {
+      "batch_size": 10,
+      "jobs": 16,
+      "calls": 16,
+      "failed_calls": 0,
+      "labelled": 160,
+      "wall_s": 13.82,
+      "first_result_s": 7.49,
+      "sessions_per_s": 11.58,
+      "mean_call_s": 10.06,
+      "cost_usd": 0.0142,
+      "agree_exact": null,
+      "agree_needs_you": null
+    }
+  ]
+}
