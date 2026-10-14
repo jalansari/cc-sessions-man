@@ -477,7 +477,7 @@ class SessionsApp(App[Session | None]):
     def apply_rename(self, r: Row, title: str) -> None:
         s = r.session
         try:
-            rename_session(s, title)
+            rename_session(s, title, self.claude_home)
         except Exception as exc:
             self.notify(str(exc), title="Rename failed", severity="error")
             return

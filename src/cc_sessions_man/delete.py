@@ -4,7 +4,7 @@ from pathlib import Path
 
 from send2trash import send2trash
 
-from .scan import CLAUDE_HOME, RUNNING, Session
+from .scan import CLAUDE_HOME, Session, live_sessions
 
 
 def session_files(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
@@ -22,8 +22,12 @@ def session_files(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
 
 
 def trash_session(s: Session, home: Path = CLAUDE_HOME) -> list[Path]:
-    """Trash one session's files. Returns the paths moved."""
-    if s.state == RUNNING:
+    """Trash one session's files. Returns the paths moved.
+
+    Checks for a live process now, not the state from when the session was scanned:
+    it may have been resumed, or closed, since.
+    """
+    if s.session_id in live_sessions(home):
         raise ValueError(f"session {s.session_id} is still running")
     moved = []
     for p in session_files(s, home):

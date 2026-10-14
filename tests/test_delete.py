@@ -47,13 +47,27 @@ def test_trash_session_moves_all_session_files(tmp_path, trashed):
     ]
 
 
+def mark_live(home, sid):
+    """Register a live session the way Claude Code does, using this test's own (alive) pid."""
+    import os
+    (home / "sessions" / f"{sid}.json").write_text(json.dumps({"pid": os.getpid(), "sessionId": sid}))
+
+
 def test_trash_session_refuses_running(tmp_path, trashed):
     home = make_home(tmp_path, ["aaa"])
     s = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
-    s.state = RUNNING
+    mark_live(home, "aaa")
     with pytest.raises(ValueError):
         delete_mod.trash_session(s, home)
     assert trashed == []
+
+
+def test_trash_session_uses_live_state_not_scan_state(tmp_path, trashed):
+    home = make_home(tmp_path, ["aaa"])
+    s = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
+    s.state = RUNNING  # was open when scanned, has since closed
+    delete_mod.trash_session(s, home)
+    assert trashed
 
 
 def run_ui(home, monkeypatch, steps):
@@ -219,18 +233,21 @@ def test_rename_session_writes_transcript_and_sidecar(tmp_path):
     home = make_home(tmp_path, ["aaa"])
     path = home / "projects" / "-w" / "aaa.jsonl"
     path.write_bytes(path.read_bytes().rstrip(b"\n"))  # no trailing newline: must not glue lines
-    rename_session(parse_transcript(path), "  my   new title ")
+    rename_session(parse_transcript(path), "  my   new title ", home)
     last = json.loads(path.read_text().splitlines()[-1])
     assert last == {"type": "custom-title", "customTitle": "my new title", "sessionId": "aaa"}
     assert json.loads((path.with_suffix("") / "custom-title.json").read_text()) == {"customTitle": "my new title"}
     assert parse_transcript(path).title == "my new title"
 
     s = parse_transcript(path)
-    s.state = RUNNING
+    s.state = RUNNING  # stale scan state alone doesn't block a rename
+    rename_session(s, "after close", home)
+    assert parse_transcript(path).title == "after close"
+    mark_live(home, "aaa")  # a live process does
     with pytest.raises(ValueError):
-        rename_session(s, "nope")
+        rename_session(parse_transcript(path), "nope", home)
     with pytest.raises(ValueError):
-        rename_session(parse_transcript(path), "   ")
+        rename_session(parse_transcript(path), "   ", home)
 
 
 def test_ui_rename_keeps_label(tmp_path, monkeypatch):
