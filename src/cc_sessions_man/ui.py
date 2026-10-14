@@ -521,10 +521,18 @@ class SessionsApp(App[Session | None]):
             self.notify(str(exc), title="Rename failed", severity="error")
             return
         # Renaming touched the transcript. Carry the label over to the new mtime so the
-        # session isn't sent for classification again just because of its title.
+        # session isn't sent for classification again just because of its title. (A batch
+        # still in flight for this session is fine: only a title line was added, so its
+        # label still fits.)
         label = self.cache.get(s)
         s.title = title
-        s.mtime = s.path.stat().st_mtime
+        try:
+            s.mtime = s.path.stat().st_mtime
+        except OSError:
+            # Gone between the rename and now (e.g. Claude Code cleanup). The next scan drops it.
+            self.render_table()
+            self.notify("Renamed, but the transcript has since disappeared.", severity="warning")
+            return
         if label:
             self.cache.put(s, label["label"], label["pending"])
             self.cache.save()

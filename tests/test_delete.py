@@ -496,3 +496,25 @@ def test_ui_partial_delete_still_removes_the_row(tmp_path, monkeypatch):
     run_ui(home, monkeypatch, steps)
     assert "Deleted, but some files were left behind" in notices
     assert "Delete failed" not in notices
+
+
+def test_ui_rename_survives_transcript_vanishing(tmp_path, monkeypatch):
+    from cc_sessions_man.rename import rename_session as real_rename
+
+    home = make_home(tmp_path, ["aaa"])
+    notices = []
+
+    def rename_then_vanish(s, title, home_):
+        real_rename(s, title, home_)
+        s.path.unlink()  # cleaned up right after the write
+
+    monkeypatch.setattr(ui, "rename_session", rename_then_vanish)
+
+    async def steps(app, pilot):
+        app.notify = lambda msg, **kw: notices.append(msg)
+        app.apply_rename(app.current_row(), "new name")  # must not raise
+        await pilot.pause()
+        assert app.current_row().session.title == "new name"
+
+    run_ui(home, monkeypatch, steps)
+    assert notices == ["Renamed, but the transcript has since disappeared."]
