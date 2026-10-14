@@ -66,3 +66,35 @@ def test_classify_sends_exactly_the_todo_list(tmp_path, monkeypatch):
     labels = classify_mod.classify(todo, cache, batch_size=3, jobs=2)
     assert sorted(sent) == sorted(labels) == [s.session_id for s in todo]
     assert cache.partition(todo) == ({s.session_id: cache.get(s) for s in todo}, [])
+
+
+def sess(sid, mtime=1.0):
+    return Session(session_id=sid, path=Path(sid), mtime=mtime)
+
+
+def test_save_keeps_labels_saved_by_another_process(tmp_path):
+    path = tmp_path / "labels.json"
+    ui_cache = Cache(path)  # opened first, like the UI
+    cli_cache = Cache(path)  # e.g. cc-sessions in another terminal
+    cli_cache.put(sess("from-cli"), "done", "")
+    cli_cache.save()
+
+    ui_cache.put(sess("from-ui"), "decision", "")
+    ui_cache.save()  # must not wipe the CLI's label
+
+    on_disk = json.loads(path.read_text())
+    assert set(on_disk) == {"from-cli", "from-ui"}
+
+
+def test_save_does_not_resurrect_dropped_labels(tmp_path):
+    path = tmp_path / "labels.json"
+    cache = Cache(path)
+    cache.put(sess("gone"), "done", "")
+    cache.put(sess("kept"), "done", "")
+    cache.save()
+    cache.drop("gone")  # e.g. the session was deleted
+    cache.save()
+    assert set(json.loads(path.read_text())) == {"kept"}
+    cache.put(sess("gone"), "action", "")  # re-classified later: allowed back
+    cache.save()
+    assert json.loads(path.read_text())["gone"]["label"] == "action"

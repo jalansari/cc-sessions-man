@@ -1,5 +1,6 @@
 """Classify how a finished session ended, using a headless `claude -p` call."""
 
+import fcntl
 import json
 import subprocess
 import tempfile
@@ -127,6 +128,7 @@ class Cache:
     def __init__(self, path: Path):
         self.path = path
         self._lock = threading.Lock()
+        self._dropped: set[str] = set()  # deleted here; don't let a merge bring them back
         try:
             self.data = json.loads(path.read_text())
         except (OSError, ValueError):
@@ -134,13 +136,9 @@ class Cache:
 
     def reload(self) -> None:
         """Merge in labels saved by other runs (e.g. the CLI). In-memory labels win."""
-        try:
-            disk = json.loads(self.path.read_text())
-        except (OSError, ValueError):
-            return
+        disk = self._read_disk()
         with self._lock:
-            disk.update(self.data)
-            self.data = disk
+            self.data = self._merge(disk)
 
     def partition(self, sessions: list[Session]) -> tuple[dict[str, dict], list[Session]]:
         """Split finished sessions into cached labels and the ones still to classify.
@@ -166,16 +164,34 @@ class Cache:
     def put(self, s: Session, label: str, pending: str) -> None:
         with self._lock:
             self.data[s.session_id] = {"mtime": s.mtime, "label": label, "pending": pending}
+            self._dropped.discard(s.session_id)
 
     def drop(self, session_id: str) -> None:
         with self._lock:
             self.data.pop(session_id, None)
+            self._dropped.add(session_id)
+
+    def _read_disk(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _merge(self, disk: dict) -> dict:
+        """Disk entries plus ours, ours winning; minus anything we've dropped. Call under _lock."""
+        merged = {k: v for k, v in disk.items() if k not in self._dropped}
+        merged.update(self.data)
+        return merged
 
     def save(self) -> None:
+        """Write our labels, keeping any that another process (CLI, second UI) saved meanwhile."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Hold the lock for the whole write, so concurrent saves can't interleave
-        # and the snapshot can't change while it's being serialised.
-        with self._lock:
+        # The thread lock keeps this process's saves in order; the file lock makes the
+        # read-merge-write atomic against other processes.
+        with self._lock, open(self.path.with_name(self.path.name + ".lock"), "w") as lockfile:
+            fcntl.flock(lockfile, fcntl.LOCK_EX)
+            self.data = self._merge(self._read_disk())
             payload = json.dumps(self.data, indent=1)
             with tempfile.NamedTemporaryFile(
                 "w", dir=self.path.parent, prefix=self.path.name, suffix=".tmp", delete=False
