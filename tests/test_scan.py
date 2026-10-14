@@ -301,3 +301,28 @@ def test_live_session_with_null_fields_keeps_transcript_cwd(tmp_path, monkeypatc
     monkeypatch.setattr("cc_sessions_man.scan._proc_start", lambda pid: None)
     [s] = scan(tmp_path, cache_path=None)
     assert (s.state, s.cwd, s.live_status) == (RUNNING, "/w", "")
+
+
+def test_concurrent_scan_cache_saves_do_not_collide(tmp_path):
+    import threading
+
+    from cc_sessions_man.scan import _save_scan_cache
+
+    path = tmp_path / "scan.json"
+    errors = []
+
+    def saver(n):
+        try:
+            for i in range(200):
+                _save_scan_cache(path, {f"/t/{n}-{i}.jsonl": {"mtime": i, "size": i, "session": None}})
+        except Exception as exc:  # e.g. FileNotFoundError from a shared temp name
+            errors.append(exc)
+
+    threads = [threading.Thread(target=saver, args=(n,)) for n in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert json.loads(path.read_text())["version"] >= 1  # a complete file, not a mix
+    assert list(tmp_path.glob("*.tmp")) == []

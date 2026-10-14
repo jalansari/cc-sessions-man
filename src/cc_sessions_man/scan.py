@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -211,9 +212,11 @@ def _load_scan_cache(path: Path) -> dict:
 
 def _save_scan_cache(path: Path, entries: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": SCAN_CACHE_VERSION, "entries": entries}))
-    tmp.replace(path)
+    # A unique temp file per save: the UI and the CLI may save the same home's cache at
+    # once, and a shared temp name would let them interleave or replace() each other's.
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=path.name, suffix=".tmp", delete=False) as fh:
+        fh.write(json.dumps({"version": SCAN_CACHE_VERSION, "entries": entries}))
+    Path(fh.name).replace(path)
 
 
 _DEFAULT = object()
