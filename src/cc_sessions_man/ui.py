@@ -17,6 +17,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import CommandPalette, DiscoveryHit, Hit, Hits
 from textual.content import Content
+from textual.css.query import NoMatches
 from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import ThemeProvider
@@ -292,6 +293,21 @@ class ConfirmDelete(ModalScreen[bool]):
         self.dismiss(yes)
 
 
+def ignore_after_quit(method):
+    """Drop a worker result or queued event that arrives after quitting removed the widgets.
+
+    Only a missing widget on a torn-down screen is ignored; any other NoMatches still raises.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except NoMatches:
+            if self.widgets_present():
+                raise
+    return wrapper
+
+
 class SessionsApp(App[Session | None]):
     TITLE = "Claude Code sessions"
     CSS = """
@@ -393,6 +409,7 @@ class SessionsApp(App[Session | None]):
         self.cache.reload()
         self.start_load(quiet=True, auto=True)
 
+    @ignore_after_quit  # called from the load worker, which can finish after quitting
     def load_finished(self, outcome: bool | None) -> None:
         """outcome: True if classification hit errors, False if it ran cleanly, None if it didn't run."""
         self.loading = False
@@ -438,6 +455,7 @@ class SessionsApp(App[Session | None]):
         classify(send, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
         return bool(errors)
 
+    @ignore_after_quit  # called from the load worker, which can finish after quitting
     def apply_batch(
         self, new: dict[str, dict], batch_ids: list[str], total: int, err: Exception | None = None
     ) -> None:
@@ -460,6 +478,7 @@ class SessionsApp(App[Session | None]):
         self.set_status(f"Classifying {total - len(self.classifying)}/{total} with {self.model}…")
         self.render_table()
 
+    @ignore_after_quit  # called from the load worker, which can finish after quitting
     def set_status(self, msg: str) -> None:
         self.sub_title = msg
         self.update_title_bar()
@@ -470,6 +489,7 @@ class SessionsApp(App[Session | None]):
             left.append(f"  —  {self.sub_title}", style="dim")
         self.query_one(TitleBar).show(left, f"{len(self.marked)} marked" if self.marked else "")
 
+    @ignore_after_quit  # called from the load worker, which can finish after quitting
     def show(self, sessions: list[Session], labels: dict[str, dict], classifying: set[str] | None = None) -> None:
         # The scan may predate a delete or rename made while it ran: re-apply those.
         sessions = [s for s in sessions if s.session_id not in self.load_deleted]
@@ -620,10 +640,14 @@ class SessionsApp(App[Session | None]):
 
     # Events and actions -----------------------------------------------------
 
+    @ignore_after_quit  # a highlight queued by a rebuild can arrive after quitting
     def on_data_table_row_highlighted(self, _event) -> None:
-        # A highlight queued by a rebuild can arrive after quitting has removed the table.
-        if self.query(DataTable):
-            self.update_detail()
+        self.update_detail()
+
+    def widgets_present(self) -> bool:
+        """Whether the main screen still has every widget the callbacks use (False while quitting)."""
+        main = self.screen_stack[0] if self.screen_stack else None
+        return bool(main) and all(main.query(w) for w in (DataTable, TitleBar, "#detail", "#group", "#search"))
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col = event.column_key.value

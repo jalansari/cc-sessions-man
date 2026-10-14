@@ -594,13 +594,31 @@ def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypa
     run_ui(home, monkeypatch, steps)
 
 
-def test_row_highlight_after_the_table_is_gone_is_ignored(tmp_path, monkeypatch):
-    # On quit, a highlight event left queued by a redraw can arrive after the table is removed.
+@pytest.mark.parametrize("gone", ["DataTable", "TitleBar", "#detail", "#group", "#search"])
+def test_late_events_and_worker_results_after_quit_are_ignored(tmp_path, monkeypatch, gone):
+    # On quit, a queued highlight or a load worker's result can arrive after the widgets
+    # are removed, in either order; each of these used to raise NoMatches.
     home = make_home(tmp_path, ["a"])
 
     async def steps(app, pilot):
-        await app.query_one(ui.DataTable).remove()
-        app.on_data_table_row_highlighted(None)  # used to raise NoMatches
+        sessions = [r.session for r in app.rows]
+        await app.query_one(gone).remove()
+        app.on_data_table_row_highlighted(None)
+        app.show(sessions, {"a": {"label": "decision", "pending": "?"}})  # changed: redraws
+        app.apply_batch({"a": {"label": "done", "pending": ""}}, ["a"], 1)
+        app.set_status("Classifying…")
+        app.load_finished(False)
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_missing_widget_still_raises_while_the_app_is_running(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["a"])
+
+    async def steps(app, pilot):
+        monkeypatch.setattr(app, "update_detail", lambda: app.query_one("#no-such-widget"))
+        with pytest.raises(ui.NoMatches):
+            app.on_data_table_row_highlighted(None)
 
     run_ui(home, monkeypatch, steps)
 
