@@ -16,10 +16,10 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .cli import CACHE_PATH, GROUPS, STATUS_RANK, detail_of, group_of, short_path
+from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, short_path
 from .delete import trash_session
 from .rename import rename_session
-from .scan import CLAUDE_HOME, ENDED, Session, claude_env, home_arg, live_sessions, scan
+from .scan import ENDED, Session, claude_env, live_sessions, scan
 
 PENDING = {"decision", "action", "interrupted"}
 
@@ -555,14 +555,7 @@ class SessionsApp(App[Session | None]):
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="cc-sessions-ui", description=__doc__)
-    p.add_argument("--no-llm", action="store_true", help="don't call the model; use cached labels only")
-    p.add_argument("--model", default="haiku", help="model for classification (default: haiku)")
-    p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
-    p.add_argument("-j", "--jobs", type=int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
-    p.add_argument(
-        "--claude-home", type=home_arg, default=CLAUDE_HOME,
-        help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
-    )
+    add_common_args(p)
     args = p.parse_args(argv)
 
     session = SessionsApp(args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs).run()

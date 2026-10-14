@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, LABELS, Cache, classify, error_labels
+from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, ENDED, MID_TASK, NO_REPLY, RUNNING, home_arg, scan
 
 CACHE_PATH = CACHE_DIR / "labels.json"
@@ -75,6 +75,18 @@ def resume_command(home: Path, session_id: str, cwd: str) -> str:
     return f"cd {shlex.quote(cwd)} && {config_prefix(home)}claude --resume {session_id}"
 
 
+def add_common_args(p: argparse.ArgumentParser) -> None:
+    """Options shared by cc-sessions and cc-sessions-ui."""
+    p.add_argument("--no-llm", action="store_true", help="don't call the model; use cached labels only")
+    p.add_argument("--model", default="haiku", help="model alias or ID for classification (default: haiku)")
+    p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
+    p.add_argument("-j", "--jobs", type=int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
+    p.add_argument(
+        "--claude-home", type=home_arg, default=CLAUDE_HOME,
+        help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
+    )
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="cc-sessions", description=__doc__)
     p.add_argument("-n", "--limit", type=int, help="only the N most recent sessions")
@@ -84,16 +96,9 @@ def parse_args(argv=None):
         help="only these groups (repeatable). Default: everything",
     )
     p.add_argument("--pending", action="store_true", help="shorthand for --show decision --show action --show interrupted")
-    p.add_argument("--no-llm", action="store_true", help="skip the model; use cached labels only")
     p.add_argument("--refresh", action="store_true", help="ignore cached labels for the listed sessions and re-classify them")
-    p.add_argument("--model", default="haiku", help="model alias or ID for classification (default: haiku)")
-    p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
-    p.add_argument("-j", "--jobs", type=int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
     p.add_argument("--json", action="store_true", help="print JSON instead of a table")
-    p.add_argument(
-        "--claude-home", type=home_arg, default=CLAUDE_HOME,
-        help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
-    )
+    add_common_args(p)
     return p.parse_args(argv)
 
 
