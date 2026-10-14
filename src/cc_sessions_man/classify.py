@@ -126,6 +126,16 @@ class Cache:
         except (OSError, ValueError):
             self.data = {}
 
+    def reload(self) -> None:
+        """Merge in labels saved by other runs (e.g. the CLI). In-memory labels win."""
+        try:
+            disk = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            return
+        with self._lock:
+            disk.update(self.data)
+            self.data = disk
+
     def get(self, s: Session) -> dict | None:
         with self._lock:
             hit = self.data.get(s.session_id)

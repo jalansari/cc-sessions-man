@@ -219,6 +219,7 @@ class SessionsApp(App[Session | None]):
         self.marked: set[str] = set()  # session IDs picked for deletion
         self.sort_column = "status"
         self.sort_reverse = False
+        self.loading = False  # a scan/classify worker is running
 
     def compose(self) -> ComposeResult:
         yield TitleBar()
@@ -235,12 +236,28 @@ class SessionsApp(App[Session | None]):
         for key, label in COLUMNS:
             table.add_column(label, key=key)
         table.focus()
-        self.load()
+        self.start_load()
 
     # Data loading ---------------------------------------------------------
 
-    @work(thread=True, exclusive=True)
+    def start_load(self) -> None:
+        # Only one load at a time: a thread worker can't be cancelled while it waits on
+        # claude, so a second run would classify the same sessions twice.
+        self.loading = True
+        self.load()
+
+    def load_finished(self) -> None:
+        self.loading = False
+        self.set_status("")
+
+    @work(thread=True)
     def load(self) -> None:
+        try:
+            self._load()
+        finally:
+            self.call_from_thread(self.load_finished)
+
+    def _load(self) -> None:
         self.call_from_thread(self.set_status, "Scanning transcripts…")
         sessions = scan(self.claude_home)
         cached = {s.session_id: h for s in sessions if s.state == ENDED and (h := self.cache.get(s))}
@@ -250,7 +267,6 @@ class SessionsApp(App[Session | None]):
         # Show the list straight away; unclassified rows fill in as batches come back.
         self.call_from_thread(self.show, sessions, cached)
         if not (self.use_llm and todo):
-            self.call_from_thread(self.set_status, "")
             return
         self.call_from_thread(self.set_status, f"Classifying 0/{len(todo)} with {self.model}…")
 
@@ -258,7 +274,6 @@ class SessionsApp(App[Session | None]):
             self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(todo))
 
         classify(sessions, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
-        self.call_from_thread(self.set_status, "")
 
     def apply_batch(self, new: dict[str, dict], batch_ids: list[str], total: int) -> None:
         for r in self.rows:
@@ -498,8 +513,11 @@ class SessionsApp(App[Session | None]):
             self.notify(msg, title="Delete failed", severity="error")
 
     def action_refresh(self) -> None:
-        self.cache = Cache(CACHE_PATH)
-        self.load()
+        if self.loading:
+            self.notify("Still scanning or classifying. Refresh when it finishes.", severity="warning")
+            return
+        self.cache.reload()
+        self.start_load()
 
     def action_pending(self) -> None:
         self.query_one("#group", Select).value = "pending"

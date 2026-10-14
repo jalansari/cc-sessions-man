@@ -254,3 +254,44 @@ def test_ui_rename_keeps_label(tmp_path, monkeypatch):
     assert parse_transcript(home / "projects" / "-w" / "aaa.jsonl").title == "renamed"
     fresh = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
     assert Cache(home / "cache.json").get(fresh)["label"] == "decision"  # no re-classification needed
+
+
+def test_ui_refresh_is_refused_while_classifying(tmp_path, monkeypatch):
+    import threading
+
+    import cc_sessions_man.classify as classify_mod
+
+    home = make_home(tmp_path, [f"s{i}" for i in range(3)])
+    gate = threading.Event()
+    calls = []
+
+    def slow_run(prompt, model):
+        calls.append(prompt)
+        gate.wait(5)
+        ids = [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+        return [{"id": i, "label": "done", "pending": ""} for i in ids]
+
+    monkeypatch.setattr(classify_mod, "_run_claude", slow_run)
+    monkeypatch.setattr(ui, "Cache", lambda _p: Cache(home / "cache.json"))
+
+    async def go():
+        app = ui.SessionsApp(home, "haiku", use_llm=True, batch_size=5)
+        async with app.run_test(size=(160, 40)) as pilot:
+            while not calls:
+                await pilot.pause(0.02)
+            await pilot.press("r")  # mid-classification
+            await pilot.pause()
+            refused = app.loading
+            gate.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            after = app.loading
+            await pilot.press("r")  # now allowed
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            return refused, after, [r.group for r in app.rows]
+
+    refused, after, groups = asyncio.run(go())
+    assert refused is True and after is False
+    assert len(calls) == 1  # no second classify run; the refresh after finishing found it all cached
+    assert groups == ["done"] * 3

@@ -86,7 +86,7 @@ It shows a table of sessions with status, start time, last activity, title and f
 | `Shift+Space` | Same as `u`, in terminals that report Shift with Space. Many don't, and send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
-| `r` | Rescan and classify any new or changed sessions |
+| `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
 | `q` | Quit |
 
 Use the drop-down at the top left to show a single group.
