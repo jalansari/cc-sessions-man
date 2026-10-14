@@ -358,11 +358,12 @@ class SessionsApp(App[Session | None]):
             out.append(r)
         if self.sort_column in ("status", "folder"):
             # Newest first within each status, whichever way the status order runs.
+            # (Folder sort is only entered with sort_reverse False, via the s key.)
             out.sort(key=lambda r: r.session.last_timestamp, reverse=True)
-            out.sort(key=lambda r: STATUS_RANK[r.group], reverse=self.sort_column == "status" and self.sort_reverse)
+            out.sort(key=lambda r: STATUS_RANK[r.group], reverse=self.sort_reverse)
             if self.sort_column == "folder":
                 # Stable sort: within a folder, the status-then-date order above is kept.
-                out.sort(key=lambda r: r.session.cwd, reverse=self.sort_reverse)
+                out.sort(key=lambda r: r.session.cwd)
             return out
         key = {
             "started": lambda r: r.session.started,
