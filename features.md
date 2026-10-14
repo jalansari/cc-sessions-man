@@ -425,11 +425,19 @@ Each session gets exactly one status.
 - **Enter** on a row: closes the UI and runs `claude --resume <id>` in the session's folder.
 - **`o`** on a row: resumes the session in a new terminal window, keeping the UI open (Linux only).
   - **Terminal:** the first found of `$TERMINAL`, `xdg-terminal-exec` and `x-terminal-emulator`; none found gives an error notice naming them.
-  - **Command:** `$TERMINAL` and `x-terminal-emulator` get `-e` and the command as one shell-quoted string, because terminals disagree on what `-e` takes: Terminator only accepts one string, and Konsole accepts either. `xdg-terminal-exec` gets the command as separate arguments, as its spec says.
+  - **Command:** terminals disagree on what `-e` takes, so the form depends on the terminal (following `x-terminal-emulator`'s link to find the real one).
+    - Terminator, xfce4-terminal, mate-terminal and GNOME Terminal's Debian wrapper get the command as one shell-quoted string.
+    - Other terminals get the program and its arguments after `-e`, as Debian's `x-terminal-emulator` convention says.
+    - `xdg-terminal-exec` gets the command as separate arguments, as its spec says.
+    - Tried by hand: Terminator only accepts one string; Konsole accepts either.
+    - Terminals that don't take `-e` at all (such as WezTerm, which needs `start`) aren't supported yet.
+  - **Failure to start:** if the terminal exits with an error within half a second, the UI shows an error instead of claiming success. Terminals that hand the window to an already-running instance exit straight away with success, which counts as opened.
+  - **Missing folder:** if the new terminal can't change to the folder, it prints that the session wasn't resumed and leaves a shell open.
   - **Folder and config:** the command changes to the session's folder itself, and sets or clears `CLAUDE_CONFIG_DIR` itself, because a terminal that's already running may open the window from its own process, with its own folder and environment.
   - **Afterwards:** when Claude exits, the window stays open at the user's shell in the session's folder.
   - **Independent:** the terminal runs in its own session, so quitting the UI leaves it open.
-  - **Rescan:** about five seconds after opening, the list rescans, so the session moves to Running and can't be opened twice.
+  - **No double opening:** for a minute after `o`, Enter and `o` refuse that session ("just opened in a new terminal"), because Claude only counts as running once it has started and recorded its process.
+  - **Rescan:** about five seconds after opening, a quiet rescan (like the automatic refresh) moves the session to Running. It skips the model while classification is paused, and doesn't run if a scan is already running.
   - **Not yet:** macOS, and a setting for a terminal command with its own flags.
 - **Non-default config folder:** passed on through `CLAUDE_CONFIG_DIR`, as an absolute path.
 - **Refused** (Enter and `o`):

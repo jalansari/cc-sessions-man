@@ -7,6 +7,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +51,9 @@ from .terminal import open_in_terminal
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
 RESCAN_AFTER_OPEN = 5.0  # seconds after opening a new terminal
+# How long a session opened with o is refused again, while claude starts and before
+# a rescan sees it running.
+OPEN_GUARD = 60.0  # seconds
 
 # The sort mark in a column heading, coloured so it stands apart from the name.
 SORT_MARK_STYLE = "bold #61afef"
@@ -582,6 +586,7 @@ class SessionsApp(App[Session | None]):
         # The last theme key's notice, replaced by the next so quick presses don't
         # stack.
         self.theme_notice: Notification | None = None
+        self.opened: dict[str, float] = {}  # session ID -> when o opened it
         # The worker records the process while the UI may be stopping the search: one at
         # a time.
         self.search_lock = threading.Lock()
@@ -1056,6 +1061,13 @@ class SessionsApp(App[Session | None]):
                 "That session is still open in another terminal.", severity="warning"
             )
             return None
+        # Just opened with o: claude may not have started yet, so it isn't live yet.
+        opened = self.opened.get(r.session.session_id)
+        if opened is not None and time.monotonic() - opened < OPEN_GUARD:
+            self.notify(
+                "That session was just opened in a new terminal.", severity="warning"
+            )
+            return None
         if not r.session.cwd or not os.path.isdir(r.session.cwd):
             # claude --resume looks the session up by folder; from anywhere else it
             # either can't find it or resumes in the wrong working tree.
@@ -1083,12 +1095,11 @@ class SessionsApp(App[Session | None]):
                 str(exc), title="Can't open a terminal", severity="error", markup=False
             )
             return
-        self.notify(
-            f"Resuming {truncate_words(s.title or s.session_id, 60)} in a new terminal."
-        )
-        # Rescan once claude has started, so the session moves to Running and can't
-        # be opened twice.
-        self.set_timer(RESCAN_AFTER_OPEN, self.action_refresh)
+        self.opened[s.session_id] = time.monotonic()
+        title = truncate_words(s.title or s.session_id, 60)
+        self.notify(f"Resuming {title} in a new terminal.", markup=False)
+        # Rescan quietly once claude has started, so the session moves to Running.
+        self.set_timer(RESCAN_AFTER_OPEN, self.auto_refresh)
 
     def action_toggle_mark(self) -> None:
         r = self.current_row()

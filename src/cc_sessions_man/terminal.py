@@ -10,7 +10,24 @@ from .scan import CLAUDE_HOME, Session, claude_env
 
 # Run in the new terminal: resume in the session's folder, then stay at a shell there.
 # The folder and the command come in as arguments, so nothing needs quoting.
-SCRIPT = 'cd "$1" && shift && "$@"; exec "${SHELL:-/bin/sh}"'
+SCRIPT = (
+    'if cd "$1"; then shift; "$@"; '
+    'else echo "Can\'t open $1, so the session was not resumed."; fi; '
+    'exec "${SHELL:-/bin/sh}"'
+)
+
+# Terminals whose -e takes the whole command as one string (their -x takes arguments).
+# The rest take the program and its arguments after -e, as Debian's
+# x-terminal-emulator convention says.
+ONE_STRING_E = {
+    "terminator",
+    "xfce4-terminal",
+    "mate-terminal",
+    "gnome-terminal.wrapper",
+}
+
+# A terminal that can't start usually fails at once: wait this long for that.
+LAUNCH_CHECK = 0.5  # seconds
 
 
 class NoTerminal(RuntimeError):
@@ -34,19 +51,26 @@ def resume_command(s: Session, claude: str, home: Path = CLAUDE_HOME) -> list[st
 def terminal_launcher(command: list[str]) -> list[str] | None:
     """The command that opens a terminal window running `command`, or None.
 
-    Tried in order: $TERMINAL, xdg-terminal-exec, x-terminal-emulator. Terminals
-    disagree on what -e takes (Terminator wants one string, Konsole accepts either), so
-    it gets the command as one shell-quoted string. xdg-terminal-exec takes it as
-    arguments.
+    Tried in order: $TERMINAL, xdg-terminal-exec, x-terminal-emulator.
+    xdg-terminal-exec takes the command as arguments; the others get it after -e.
     """
     if terminal := shlex.split(os.environ.get("TERMINAL", "")):
-        if shutil.which(terminal[0]):
-            return [*terminal, "-e", shlex.join(command)]
+        if path := shutil.which(terminal[0]):
+            return with_e([path, *terminal[1:]], command)
     if tool := shutil.which("xdg-terminal-exec"):
         return [tool, *command]
     if tool := shutil.which("x-terminal-emulator"):
-        return [tool, "-e", shlex.join(command)]
+        return with_e([tool], command)
     return None
+
+
+def with_e(terminal: list[str], command: list[str]) -> list[str]:
+    """`terminal -e command`, in the form the terminal takes. x-terminal-emulator is a
+    link to the real terminal, so it's followed to find which one.
+    """
+    if os.path.basename(os.path.realpath(terminal[0])) in ONE_STRING_E:
+        return [*terminal, "-e", shlex.join(command)]
+    return [*terminal, "-e", *command]
 
 
 def open_in_terminal(s: Session, home: Path = CLAUDE_HOME) -> None:
@@ -63,7 +87,7 @@ def open_in_terminal(s: Session, home: Path = CLAUDE_HOME) -> None:
             "No terminal found: set $TERMINAL, or install xdg-terminal-exec or "
             "x-terminal-emulator."
         )
-    subprocess.Popen(
+    proc = subprocess.Popen(
         launcher,
         cwd=s.cwd,
         stdin=subprocess.DEVNULL,
@@ -71,3 +95,13 @@ def open_in_terminal(s: Session, home: Path = CLAUDE_HOME) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    try:
+        code = proc.wait(timeout=LAUNCH_CHECK)
+    except subprocess.TimeoutExpired:
+        return  # still running: the window is open
+    # Some terminals hand the window to a running instance and exit straight away.
+    if code != 0:
+        raise RuntimeError(
+            f"{os.path.basename(launcher[0])} exited with code {code} without opening "
+            "a window."
+        )

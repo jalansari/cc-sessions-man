@@ -170,7 +170,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `o` | Resume the session in a new terminal window and keep the UI open. When you quit Claude, the window stays open at a shell in the session's folder. Linux only; see below |
 | `p` | Show only sessions that need you (decision, action, interrupted) |
 | `a` | Show all sessions: resets the group drop-down to All, clears the search, and clears or stops an AI search |
-| `/` | Filter by title, folder or session ID. Enter or Esc returns to the table |
+| `/` | Filter by title, folder or session ID. Enter or Esc returns to the table. Not in the footer: the search box shows it |
 | `f` | AI search: Claude looks through every transcript for sessions matching what you describe. See [AI search](#ai-search) |
 | `Space` | Mark or unmark the session for deletion, and move down a row |
 | `u` | Unmark all. Does nothing when nothing is marked |
@@ -186,8 +186,8 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `q` | Quit |
 
 `o` finds a terminal in this order: the `$TERMINAL` environment variable (a command, which gets `-e` and the command to run), then `xdg-terminal-exec`, then `x-terminal-emulator` (Debian and Ubuntu's default terminal, set with `update-alternatives`).
-If none is found, it says so and Enter still works.
-About five seconds after opening, the list rescans, so the session moves to Running.
+If none is found, or the terminal fails to start, it says so and Enter still works.
+A session opened with `o` can't be opened again for a minute, and about five seconds after opening, the list rescans quietly so it moves to Running.
 
 Use the drop-down at the top left to show a single group.
 A session in the Running group is open in another terminal, so it can't be resumed, renamed, moved or deleted from here.
