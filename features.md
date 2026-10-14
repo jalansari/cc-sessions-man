@@ -613,6 +613,7 @@ Each session gets exactly one status.
   - A single word longer than the limit is cut mid-word.
 - **Details panel:** status and outstanding-work note, full title, full session ID, folder and full model ID.
 - **Footer:** the main keys.
+  - `/` (search) is left out: the search box's placeholder already shows it, "(/)". It's still in the keys panel.
 
 ## Path display
 

@@ -271,7 +271,7 @@ class SessionTable(DataTable):
     # Re-label DataTable's own Enter binding so it shows in the footer.
     BINDINGS = [
         Binding("enter", "select_cursor", "Resume"),
-        Binding("o", "app.open_terminal", "New terminal"),
+        Binding("o", "app.open_terminal", "Open"),
         # Vim keys, alongside the arrows: listed in the keys panel, not the footer.
         Binding("k", "cursor_up", "Cursor up", show=False),
         Binding("j", "cursor_down", "Cursor down", show=False),
@@ -532,7 +532,8 @@ class SessionsApp(App[Session | None]):
         ),
         Binding("p", "pending", "Pending"),
         Binding("a", "all", "All"),
-        Binding("/", "focus_search", "Search"),
+        # Hidden: the search box's placeholder already names the key.
+        Binding("/", "focus_search", "Search", show=False),
         Binding("space", "toggle_mark", "Mark"),
         Binding("u", "unmark_all", "Unmark all"),
         # Most terminals send plain Space for Shift+Space; this only fires where Shift

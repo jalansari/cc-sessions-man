@@ -176,4 +176,5 @@ def test_o_is_in_the_footer(tmp_path, monkeypatch):
         footer.extend((k.key, k.description) for k in app.screen.query("FooterKey"))
 
     run_ui(home, monkeypatch, steps)
-    assert ("o", "New terminal") in footer
+    assert ("o", "Open") in footer
+    assert "slash" not in {key for key, _ in footer}  # named in the search box
