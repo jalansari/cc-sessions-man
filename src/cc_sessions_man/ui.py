@@ -45,9 +45,11 @@ from .paths import Completer, problem_span, to_path
 from .rename import rename_session
 from .scan import Session, claude_env, live_sessions, parse_transcript, scan
 from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
+from .terminal import open_in_terminal
 
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
+RESCAN_AFTER_OPEN = 5.0  # seconds after opening a new terminal
 
 # The sort mark in a column heading, coloured so it stands apart from the name.
 SORT_MARK_STYLE = "bold #61afef"
@@ -269,6 +271,7 @@ class SessionTable(DataTable):
     # Re-label DataTable's own Enter binding so it shows in the footer.
     BINDINGS = [
         Binding("enter", "select_cursor", "Resume"),
+        Binding("o", "app.open_terminal", "New terminal"),
         # Vim keys, alongside the arrows: listed in the keys panel, not the footer.
         Binding("k", "cursor_up", "Cursor up", show=False),
         Binding("j", "cursor_down", "Cursor down", show=False),
@@ -1039,15 +1042,19 @@ class SessionsApp(App[Session | None]):
     def on_data_table_row_selected(self, _event) -> None:
         self.action_resume()
 
-    def action_resume(self) -> None:
+    def resumable(self) -> Session | None:
+        """The selected session, if it can be resumed; otherwise None, with a notice."""
         r = self.current_row()
         if r is None:
-            return
-        if r.group == "running":
+            return None
+        # Checked now, not only from the scan: it may have been opened since.
+        if r.group == "running" or r.session.session_id in live_sessions(
+            self.claude_home
+        ):
             self.notify(
                 "That session is still open in another terminal.", severity="warning"
             )
-            return
+            return None
         if not r.session.cwd or not os.path.isdir(r.session.cwd):
             # claude --resume looks the session up by folder; from anywhere else it
             # either can't find it or resumes in the wrong working tree.
@@ -1057,8 +1064,30 @@ class SessionsApp(App[Session | None]):
                 title="Can't resume",
                 severity="error",
             )
+            return None
+        return r.session
+
+    def action_resume(self) -> None:
+        if s := self.resumable():
+            self.exit(s)
+
+    def action_open_terminal(self) -> None:
+        """o: resume the session in a new terminal window, keeping the UI open."""
+        if not (s := self.resumable()):
             return
-        self.exit(r.session)
+        try:
+            open_in_terminal(s, self.claude_home)
+        except (OSError, RuntimeError) as exc:
+            self.notify(
+                str(exc), title="Can't open a terminal", severity="error", markup=False
+            )
+            return
+        self.notify(
+            f"Resuming {truncate_words(s.title or s.session_id, 60)} in a new terminal."
+        )
+        # Rescan once claude has started, so the session moves to Running and can't
+        # be opened twice.
+        self.set_timer(RESCAN_AFTER_OPEN, self.action_refresh)
 
     def action_toggle_mark(self) -> None:
         r = self.current_row()

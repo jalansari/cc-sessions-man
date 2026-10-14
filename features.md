@@ -423,9 +423,17 @@ Each session gets exactly one status.
 ## Opening (resuming) a session
 
 - **Enter** on a row: closes the UI and runs `claude --resume <id>` in the session's folder.
+- **`o`** on a row: resumes the session in a new terminal window, keeping the UI open (Linux only).
+  - **Terminal:** the first found of `$TERMINAL`, `xdg-terminal-exec` and `x-terminal-emulator`; none found gives an error notice naming them.
+  - **Command:** `$TERMINAL` and `x-terminal-emulator` get `-e` and the command as one shell-quoted string, because terminals disagree on what `-e` takes: Terminator only accepts one string, and Konsole accepts either. `xdg-terminal-exec` gets the command as separate arguments, as its spec says.
+  - **Folder and config:** the command changes to the session's folder itself, and sets or clears `CLAUDE_CONFIG_DIR` itself, because a terminal that's already running may open the window from its own process, with its own folder and environment.
+  - **Afterwards:** when Claude exits, the window stays open at the user's shell in the session's folder.
+  - **Independent:** the terminal runs in its own session, so quitting the UI leaves it open.
+  - **Rescan:** about five seconds after opening, the list rescans, so the session moves to Running and can't be opened twice.
+  - **Not yet:** macOS, and a setting for a terminal command with its own flags.
 - **Non-default config folder:** passed on through `CLAUDE_CONFIG_DIR`, as an absolute path.
-- **Refused:**
-  - a running session ("still open in another terminal");
+- **Refused** (Enter and `o`):
+  - a running session ("still open in another terminal"), checked again at the moment of opening, not only from the last scan;
   - a session whose folder no longer exists, with a notice naming the folder (never run `claude` from the wrong folder).
 - **CLI:** `--json` output holds a ready-to-paste resume command for each session, including the `CLAUDE_CONFIG_DIR=` prefix when needed.
 
