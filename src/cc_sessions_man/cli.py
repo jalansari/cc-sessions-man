@@ -89,6 +89,17 @@ def positive_int(value: str) -> int:
     return n
 
 
+def positive_float(value: str) -> float:
+    """argparse type: a number greater than 0."""
+    try:
+        n = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
+    if not n > 0:
+        raise argparse.ArgumentTypeError(f"must be more than 0, got {value}")
+    return n
+
+
 def add_common_args(p: argparse.ArgumentParser) -> None:
     """Options shared by cc-sessions and cc-sessions-ui."""
     p.add_argument("--no-llm", action="store_true", help="don't call the model; use cached labels only")
@@ -103,8 +114,8 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="cc-sessions", description=__doc__)
-    p.add_argument("-n", "--limit", type=int, help="only the N most recent sessions")
-    p.add_argument("--days", type=float, help="only sessions active in the last N days")
+    p.add_argument("-n", "--limit", type=positive_int, help="only the N most recent sessions")
+    p.add_argument("--days", type=positive_float, help="only sessions active in the last N days")
     p.add_argument(
         "-s", "--show", action="append", choices=list(GROUPS),
         help="only these groups (repeatable). Default: everything",
@@ -122,7 +133,7 @@ def main(argv=None) -> int:
     if args.days is not None:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=args.days)).isoformat()
         sessions = [s for s in sessions if s.last_timestamp >= cutoff[:19]]
-    if args.limit:
+    if args.limit is not None:
         sessions = sessions[: args.limit]
 
     cache = Cache(CACHE_PATH)

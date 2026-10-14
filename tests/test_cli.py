@@ -103,3 +103,15 @@ def test_failed_refresh_keeps_old_labels(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     saved = json.loads(cli.CACHE_PATH.read_text())
     assert {k: v["label"] for k, v in saved.items()} == {"a": "done", "b": "done"}  # success replaces them
+
+
+def test_limit_and_days_must_be_positive(tmp_path, monkeypatch, capsys):
+    import pytest
+
+    home = make_home(tmp_path, ["a"])
+    monkeypatch.setattr(classify_mod, "_run_claude", lambda *a: pytest.fail("must not classify"))
+    for bad in (["-n", "0"], ["-n", "-1"], ["--days", "0"], ["--days", "-2"], ["--days", "nan"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["--claude-home", str(home), *bad])
+        assert exc.value.code == 2
+        capsys.readouterr()
