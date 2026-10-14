@@ -20,12 +20,13 @@ from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, short_path
+from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, detail_of, group_of, refresh_interval_arg, short_path
 from .delete import trash_session
 from .rename import rename_session
 from .scan import Session, claude_env, live_sessions, scan
 
 PENDING = {"decision", "action", "interrupted"}
+DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
 
 GROUP_STYLE = {
     "running": "bold #4ec96b",
@@ -297,8 +298,10 @@ class SessionsApp(App[Session | None]):
     def __init__(
         self, claude_home: Path, model: str, use_llm: bool,
         batch_size: int = DEFAULT_BATCH_SIZE, jobs: int = DEFAULT_JOBS,
+        refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
     ):
         super().__init__()
+        self.refresh_interval = refresh_interval
         self.batch_size = batch_size
         self.jobs = jobs
         self.classifying: set[str] = set()  # session IDs queued for the model
@@ -311,6 +314,15 @@ class SessionsApp(App[Session | None]):
         self.sort_keys: tuple[str, ...] = SORT_MODES[0]  # primary first
         self.sort_flipped = False  # header clicked twice: primary runs the other way
         self.loading = False  # a scan/classify worker is running
+        self.refresh_queued = False  # r pressed during a load: run another when it ends
+        # After a run hits a classification error, automatic refreshes stop calling the
+        # model until a manual r completes a run without errors.
+        self.classify_paused = False
+        self.failed: dict[str, dict] = {}  # in-memory "error" labels, shown until reclassified
+        # Deletes and renames made while a load is scanning, applied to its (older) results.
+        self.load_deleted: set[str] = set()
+        self.load_renamed: dict[str, tuple[str, float]] = {}
+        self.shown_signature = None  # what show() last rendered, to skip no-change refreshes
         self.error_notified = False  # shown the "classification failed" notice this run
 
     def compose(self) -> ComposeResult:
@@ -328,46 +340,76 @@ class SessionsApp(App[Session | None]):
         self.add_columns(table)
         table.focus()
         self.start_load()
+        if self.refresh_interval > 0:
+            self.set_interval(self.refresh_interval, self.auto_refresh)
 
     # Data loading ---------------------------------------------------------
 
-    def start_load(self) -> None:
+    def start_load(self, quiet: bool = False, auto: bool = False) -> None:
         # Only one load at a time: a thread worker can't be cancelled while it waits on
         # claude, so a second run would classify the same sessions twice.
         self.loading = True
         self.error_notified = False
-        self.load()
+        self.load_deleted, self.load_renamed = set(), {}
+        classify_now = self.use_llm and not (auto and self.classify_paused)
+        self.load(quiet, classify_now, dict(self.failed))
 
-    def load_finished(self) -> None:
+    def auto_refresh(self) -> None:
+        """Timer tick: rescan quietly, and classify anything new or changed.
+
+        Skipped while a load is still running, and while a dialog, the command palette or
+        another screen is open, so nothing changes under the user mid-action. While
+        classification is paused after an error, it rescans but doesn't call the model.
+        """
+        if self.loading or len(self.screen_stack) > 1:
+            return
+        self.cache.reload()
+        self.start_load(quiet=True, auto=True)
+
+    def load_finished(self, outcome: bool | None) -> None:
+        """outcome: True if classification hit errors, False if it ran cleanly, None if it didn't run."""
         self.loading = False
-        self.set_status("")
+        if outcome is not None:
+            self.classify_paused = outcome
+        self.set_status("Classification paused after an error. Press r to retry." if self.classify_paused else "")
+        if self.refresh_queued:
+            self.refresh_queued = False
+            self.cache.reload()
+            self.start_load()
 
     @work(thread=True)
-    def load(self) -> None:
+    def load(self, quiet: bool, classify_now: bool, failed: dict[str, dict]) -> None:
+        outcome = None
         try:
-            self._load()
+            outcome = self._load(quiet, classify_now, failed)
         finally:
-            self.call_from_thread(self.load_finished)
+            self.call_from_thread(self.load_finished, outcome)
 
-    def _load(self) -> None:
-        self.call_from_thread(self.set_status, "Scanning transcripts…")
+    def _load(self, quiet: bool, classify_now: bool, failed: dict[str, dict]) -> bool | None:
+        if not quiet:  # auto refreshes don't flash "Scanning…" every interval
+            self.call_from_thread(self.set_status, "Scanning transcripts…")
         sessions = scan(self.claude_home)
         # One split, used both to mark rows "Classifying…" and to choose what to send.
         cached, todo = self.cache.partition(sessions)
+        send = todo if classify_now else []
+        # Sessions not being sent keep any earlier "Classification failed" label.
+        labels = {**cached, **{s.session_id: failed[s.session_id] for s in todo if s.session_id in failed}}
         # Show the list straight away; unclassified rows fill in as batches come back.
         # The classifying set is handed to the main thread with it, which owns that state.
-        queued = {s.session_id for s in todo} if self.use_llm else set()
-        self.call_from_thread(self.show, sessions, cached, queued)
-        if not (self.use_llm and todo):
-            return
-        self.call_from_thread(self.set_status, f"Classifying 0/{len(todo)} with {self.model}…")
+        self.call_from_thread(self.show, sessions, labels, {s.session_id for s in send})
+        if not send:
+            return None
+        self.call_from_thread(self.set_status, f"Classifying 0/{len(send)} with {self.model}…")
+        errors = []
 
         def on_batch(new: dict[str, dict], batch: list[Session], err: Exception | None) -> None:
             if err:
+                errors.append(err)
                 new = {**new, **error_labels(batch, err, skip=new)}
-            self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(todo), err)
+            self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(send), err)
 
-        classify(todo, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
+        classify(send, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
+        return bool(errors)
 
     def apply_batch(
         self, new: dict[str, dict], batch_ids: list[str], total: int, err: Exception | None = None
@@ -375,10 +417,18 @@ class SessionsApp(App[Session | None]):
         for r in self.rows:
             if r.session.session_id in new:
                 r.update(new)
+        for sid, label in new.items():
+            if label["label"] == "error":
+                self.failed[sid] = label
+            else:
+                self.failed.pop(sid, None)
         if err and not self.error_notified:
             self.error_notified = True  # once per run; the rows carry the detail
             msg = next(iter(new.values()))["pending"] if new else str(err)
-            self.notify(f"{msg}\nPress r to retry when it finishes.", title="Classification failed", severity="error", timeout=10)
+            self.notify(
+                f"{msg}\nAuto-refresh won't classify until it works again. Press r to retry.",
+                title="Classification failed", severity="error", timeout=10,
+            )
         self.classifying -= set(batch_ids)
         self.set_status(f"Classifying {total - len(self.classifying)}/{total} with {self.model}…")
         self.render_table()
@@ -394,10 +444,30 @@ class SessionsApp(App[Session | None]):
         self.query_one(TitleBar).show(left, f"{len(self.marked)} marked" if self.marked else "")
 
     def show(self, sessions: list[Session], labels: dict[str, dict], classifying: set[str] | None = None) -> None:
+        # The scan may predate a delete or rename made while it ran: re-apply those.
+        sessions = [s for s in sessions if s.session_id not in self.load_deleted]
+        for s in sessions:
+            if s.session_id in self.load_renamed:
+                s.title, s.mtime = self.load_renamed[s.session_id]
         if classifying is not None:
-            self.classifying = classifying
+            self.classifying = classifying - self.load_deleted
+        # Keep a mark unless its session is really gone; a transcript skipped on one scan
+        # (e.g. mid-rewrite) mustn't silently lose it.
+        old_paths = {r.session.session_id: r.session.path for r in self.rows}
+        found = {s.session_id for s in sessions}
+        self.marked = {
+            sid for sid in self.marked
+            if sid in found or (sid in old_paths and old_paths[sid].exists())
+        }
         self.rows = [Row(s, labels) for s in sessions]
-        self.marked &= {s.session_id for s in sessions}
+        signature = (
+            tuple((r.session.session_id, r.session.mtime, r.session.state, r.session.live_status,
+                   r.session.title, r.group, r.detail) for r in self.rows),
+            frozenset(self.classifying), frozenset(self.marked),
+        )
+        if signature == self.shown_signature:
+            return  # nothing changed: don't rebuild (and jump) the table
+        self.shown_signature = signature
         self.render_table()
 
     # Table ----------------------------------------------------------------
@@ -433,6 +503,7 @@ class SessionsApp(App[Session | None]):
         selected = self.current_row()
         # Where the cursor sits on screen, so the selected row can stay put after the rebuild.
         screen_offset = table.cursor_row - round(table.scroll_y)
+        scroll_x = table.scroll_x
         table.clear(columns=True)  # re-add columns so the headings show the current sort
         self.add_columns(table)
         rows = self.visible_rows()
@@ -459,6 +530,7 @@ class SessionsApp(App[Session | None]):
                 # instead of being scrolled just into view at the bottom edge.
                 table.move_cursor(row=index, scroll=False)
                 table.scroll_to(y=max(0, index - screen_offset), animate=False, immediate=True)
+        table.scroll_to(x=scroll_x, animate=False, immediate=True)  # and don't jump sideways
         counts = {g: sum(r.group == g for r in self.rows) for g in GROUPS}
         # self.title also sets the terminal window title.
         self.title = f"Claude Code sessions: {len(rows)} shown, " + ", ".join(
@@ -596,6 +668,7 @@ class SessionsApp(App[Session | None]):
         if label:
             self.cache.put(s, label["label"], label["pending"])
             self.cache.save()
+        self.load_renamed[s.session_id] = (title, s.mtime)  # in case a scan in progress has the old one
         self.render_table()
         self.notify(f"Renamed to “{title}”.")
 
@@ -636,6 +709,7 @@ class SessionsApp(App[Session | None]):
         self.cache.save()
         self.marked -= deleted
         self.classifying -= deleted
+        self.load_deleted |= deleted  # in case a scan in progress still has them
         self.rows = [r for r in self.rows if r.session.session_id not in deleted]
         self.render_table()
         if deleted:
@@ -664,8 +738,11 @@ class SessionsApp(App[Session | None]):
         self.render_table()
 
     def action_refresh(self) -> None:
+        """r: rescan and classify, retrying failed sessions and lifting a pause if it works."""
         if self.loading:
-            self.notify("Still scanning or classifying. Refresh when it finishes.", severity="warning")
+            # A quiet auto refresh may be running unseen: queue rather than refuse.
+            self.refresh_queued = True
+            self.notify("Refreshing again as soon as the current scan finishes.")
             return
         self.cache.reload()
         self.start_load()
@@ -692,9 +769,15 @@ class SessionsApp(App[Session | None]):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="cc-sessions-ui", description=__doc__)
     add_common_args(p)
+    p.add_argument(
+        "--refresh-interval", type=refresh_interval_arg, default=DEFAULT_REFRESH_INTERVAL, metavar="SECONDS",
+        help=f"refresh the list automatically every SECONDS, at least 1 (default: {DEFAULT_REFRESH_INTERVAL:g}; 0 turns it off)",
+    )
     args = p.parse_args(argv)
 
-    session = SessionsApp(args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs).run()
+    session = SessionsApp(
+        args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs, args.refresh_interval,
+    ).run()
     if session is None:
         return 0
     if not session.cwd or not os.path.isdir(session.cwd):

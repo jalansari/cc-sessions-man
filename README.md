@@ -60,6 +60,7 @@ cd ~/code/my-app && claude --resume 3f2a9c1e-7b4d-4e8a-9c6f-1d2e3f4a5b6c
 ```sh
 uv run cc-sessions-ui              # or: cc-sessions-ui, after `uv tool install`
 uv run cc-sessions-ui --no-llm     # cached labels only, no model calls
+uv run cc-sessions-ui --refresh-interval 60   # auto-refresh every minute; 0 turns it off
 ```
 
 The UI is built with [Textual](https://textual.textualize.io/).
@@ -76,6 +77,16 @@ It shows a table of sessions with status, start time, last activity, title, fold
   They're sent to `claude -p` in batches of 5, 16 batches at a time, and each row updates as soon as its batch returns.
   The progress (for example `Classifying 15/35`) shows in the header.
   Change these with `--batch-size N` and `--jobs N`.
+- **Auto refresh:** the list refreshes itself every 30 seconds, picking up new sessions, status changes and sessions that have finished.
+  - New or changed sessions are classified as part of the refresh.
+  - It runs quietly, without the "Scanning…" status, and keeps your selection, marks, filter, sort and scroll position.
+    When nothing has changed, the table isn't redrawn at all.
+  - A tick is skipped while a scan or classification is still running, and while a dialog, the command palette or another screen is open.
+  - Deletes and renames you make while a refresh is scanning are kept; the refresh can't bring a deleted session back.
+  - **After a classification error** (for example, logged out or rate limited), auto refresh pauses classification.
+    It keeps rescanning but makes no model calls, and the title bar says "Classification paused after an error. Press r to retry."
+    The error is shown once, not on every tick. Press `r` to retry; when a run completes without errors, auto refresh classifies again.
+  - Set the interval with `--refresh-interval SECONDS`: at least 1, or `0` to turn auto refresh off.
 - By default it sorts by status rank, with the newest last activity first within each status.
 - `s` cycles through four sort orders (see the keys below).
 - Click a column header to sort by that column alone. Click it again to reverse the order.
@@ -96,7 +107,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `n` | Rename the selected session. Enter saves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
-| `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
+| `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
 | `k` | Show or hide the keys panel, which lists every key and what it does |
 | `q` | Quit |
 

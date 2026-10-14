@@ -1,6 +1,7 @@
 """cc-sessions: list Claude Code sessions and whether each is done or waiting on you."""
 
 import argparse
+import math
 import json
 import os
 import shlex
@@ -78,26 +79,37 @@ def resume_command(home: Path, session_id: str, cwd: str) -> str:
     return f"cd {shlex.quote(cwd)} && {config_prefix(home)}claude --resume {session_id}"
 
 
-def positive_int(value: str) -> int:
-    """argparse type: an integer of 1 or more."""
-    try:
-        n = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number") from None
-    if n < 1:
-        raise argparse.ArgumentTypeError(f"must be 1 or more, got {n}")
-    return n
+def number_arg(kind, minimum, *, inclusive: bool = True, allow_zero: bool = False):
+    """Make an argparse type for a finite number of at least (or above) `minimum`.
+
+    With allow_zero, 0 is also accepted (e.g. "0 turns it off").
+    """
+    noun = "whole number" if kind is int else "number"
+    if inclusive:
+        rule = f"{minimum:g} or more"
+    else:
+        rule = f"more than {minimum:g}"
+    if allow_zero:
+        rule = f"0 (off) or at least {minimum:g}" if inclusive else f"0 (off) or {rule}"
+
+    def parse(value: str):
+        try:
+            n = kind(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{value!r} is not a {noun}") from None
+        ok = math.isfinite(n) and (n >= minimum if inclusive else n > minimum)
+        if not (ok or (allow_zero and n == 0)):
+            raise argparse.ArgumentTypeError(f"must be {rule}, got {value}")
+        return n
+
+    parse.__name__ = f"{noun} ({rule})"  # argparse shows this name in some errors
+    return parse
 
 
-def positive_float(value: str) -> float:
-    """argparse type: a number greater than 0."""
-    try:
-        n = float(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
-    if not n > 0:
-        raise argparse.ArgumentTypeError(f"must be more than 0, got {value}")
-    return n
+positive_int = number_arg(int, 1)
+positive_float = number_arg(float, 0, inclusive=False)
+# The UI's auto-refresh: off, or at least a second apart so it can't spin the CPU.
+refresh_interval_arg = number_arg(float, 1, allow_zero=True)
 
 
 def add_common_args(p: argparse.ArgumentParser) -> None:
