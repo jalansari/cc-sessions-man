@@ -91,6 +91,7 @@ It shows a table of sessions with status, start time, last activity, title and f
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
+| `k` | Show or hide the keys panel, which lists every key and what it does |
 | `q` | Quit |
 
 Use the drop-down at the top left to show a single group.

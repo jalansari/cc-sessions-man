@@ -569,3 +569,22 @@ def test_classifying_set_is_only_changed_on_the_main_thread(tmp_path, monkeypatc
 
     asyncio.run(go())
     assert writers and all(writers)
+
+
+def test_k_toggles_keys_panel(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["aaa"])
+
+    async def steps(app, pilot):
+        panel = lambda: bool(app.screen.query("HelpPanel"))
+        assert not panel()
+        await pilot.press("k")
+        await pilot.pause()
+        assert panel()
+        await pilot.press("k")
+        await pilot.pause()
+        assert not panel()
+        await pilot.press("/", "k")  # typing in the search box isn't a shortcut
+        await pilot.pause()
+        assert not panel() and app.query_one("#search", ui.Input).value == "k"
+
+    run_ui(home, monkeypatch, steps)

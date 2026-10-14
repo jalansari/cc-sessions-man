@@ -252,6 +252,7 @@ class SessionsApp(App[Session | None]):
         Binding("shift+space", "clear_marks_or_mark", "Unmark all", show=False),
         Binding("n", "rename", "Rename"),
         Binding("d", "delete", "Delete"),
+        Binding("k", "toggle_keys", "Keys"),
         Binding("escape", "focus_table", "Table", show=False),
         Binding("q", "quit", "Quit"),
     ]
@@ -605,6 +606,13 @@ class SessionsApp(App[Session | None]):
             self.notify(msg, title="Delete failed", severity="error")
         for msg in leftovers:
             self.notify(msg, title="Deleted, but some files were left behind", severity="warning", timeout=10)
+
+    def action_toggle_keys(self) -> None:
+        """k: show or hide Textual's keys panel (the same one as Ctrl+P > Keys)."""
+        if self.screen.query("HelpPanel"):
+            self.action_hide_help_panel()
+        else:
+            self.action_show_help_panel()
 
     def action_cycle_sort(self) -> None:
         """s: step through SORT_MODES. From a column-header sort, start at the first."""
