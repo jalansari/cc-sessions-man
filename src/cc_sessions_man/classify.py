@@ -3,6 +3,7 @@
 import json
 import subprocess
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -111,30 +112,44 @@ def _run_claude(prompt: str, model: str) -> list[dict]:
 
 
 class Cache:
-    """Results keyed by session ID, invalidated when the transcript changes."""
+    """Results keyed by session ID, invalidated when the transcript changes.
+
+    Thread-safe: the UI classifies on a worker thread while renames and deletes
+    change the cache on the main thread.
+    """
 
     def __init__(self, path: Path):
         self.path = path
+        self._lock = threading.Lock()
         try:
             self.data = json.loads(path.read_text())
         except (OSError, ValueError):
             self.data = {}
 
     def get(self, s: Session) -> dict | None:
-        hit = self.data.get(s.session_id)
+        with self._lock:
+            hit = self.data.get(s.session_id)
         return hit if hit and hit.get("mtime") == s.mtime else None
 
     def put(self, s: Session, label: str, pending: str) -> None:
-        self.data[s.session_id] = {"mtime": s.mtime, "label": label, "pending": pending}
+        with self._lock:
+            self.data[s.session_id] = {"mtime": s.mtime, "label": label, "pending": pending}
 
     def drop(self, session_id: str) -> None:
-        self.data.pop(session_id, None)
+        with self._lock:
+            self.data.pop(session_id, None)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=1))
-        tmp.replace(self.path)
+        # Hold the lock for the whole write, so concurrent saves can't interleave
+        # and the snapshot can't change while it's being serialised.
+        with self._lock:
+            payload = json.dumps(self.data, indent=1)
+            with tempfile.NamedTemporaryFile(
+                "w", dir=self.path.parent, prefix=self.path.name, suffix=".tmp", delete=False
+            ) as fh:
+                fh.write(payload)
+            Path(fh.name).replace(self.path)
 
 
 def classify(
