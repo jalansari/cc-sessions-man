@@ -1,7 +1,6 @@
 import re
 
-from rich.text import Text
-from test_delete import make_home, run_ui
+from test_delete import footer_and_keys_panel, make_home, run_ui
 from textual import constants
 
 THEME_KEYS = {"ctrl+t", "ctrl+y", "ctrl+r"}
@@ -85,21 +84,17 @@ def test_theme_notices_replace_each_other(tmp_path, monkeypatch):
 
 def test_theme_keys_are_in_the_keys_panel_but_not_the_footer(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["a1"])
-    footer, panel = [], []
+    seen = []
 
     async def steps(app, pilot):
-        footer.extend(k.key for k in app.screen.query("FooterKey"))
-        await pilot.press("k")
-        await pilot.pause()
-        with app.console.capture() as capture:
-            app.console.print(app.screen.query_one("BindingsTable").render())
-        panel.append(Text.from_ansi(capture.get()).plain)
+        seen.append(await footer_and_keys_panel(app, pilot))
 
     run_ui(home, monkeypatch, steps)
-    assert footer and not THEME_KEYS & set(footer)
+    footer, panel = seen[0]
+    assert footer and not THEME_KEYS & footer
     for key, description in (
         ("t", "Next theme"),
         ("y", "Previous theme"),
         ("r", "Default theme"),
     ):
-        assert re.search(rf"\^{key} +{description}", panel[0])
+        assert re.search(rf"\^{key} +{description}", panel)

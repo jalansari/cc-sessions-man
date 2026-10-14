@@ -267,7 +267,14 @@ class TitleBar(Horizontal):
 
 class SessionTable(DataTable):
     # Re-label DataTable's own Enter binding so it shows in the footer.
-    BINDINGS = [Binding("enter", "select_cursor", "Resume")]
+    BINDINGS = [
+        Binding("enter", "select_cursor", "Resume"),
+        # Vim keys, alongside the arrows: listed in the keys panel, not the footer.
+        Binding("k", "cursor_up", "Cursor up", show=False),
+        Binding("j", "cursor_down", "Cursor down", show=False),
+        Binding("h", "cursor_left", "Cursor left", show=False),
+        Binding("l", "cursor_right", "Cursor right", show=False),
+    ]
 
 
 class RenameSession(ModalScreen[str | None]):
@@ -532,9 +539,9 @@ class SessionsApp(App[Session | None]):
         Binding("m", "move", "Move"),
         Binding("f", "ai_search", "AI search"),
         Binding("d", "delete", "Delete"),
-        Binding("k", "toggle_keys", "Keys"),
+        Binding("ctrl+k", "toggle_keys", "Keys", show=False),
         Binding("escape", "focus_table", "Table", show=False),
-        # Theme keys: listed in the keys panel (k), not the footer.
+        # Theme keys: listed in the keys panel (Ctrl+K), not the footer.
         Binding("ctrl+t", "cycle_theme(1)", "Next theme", show=False),
         Binding("ctrl+y", "cycle_theme(-1)", "Previous theme", show=False),
         Binding("ctrl+r", "default_theme", "Default theme", show=False),
@@ -1247,7 +1254,7 @@ class SessionsApp(App[Session | None]):
             )
 
     def action_toggle_keys(self) -> None:
-        """k: show or hide Textual's keys panel (the same one as Ctrl+P > Keys)."""
+        """Ctrl+K: show or hide Textual's keys panel (the same one as Ctrl+P > Keys)."""
         if self.screen.query("HelpPanel"):
             self.action_hide_help_panel()
         else:

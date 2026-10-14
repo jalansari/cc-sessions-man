@@ -4,6 +4,7 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from rich.text import Text
 from textual.widgets._data_table import default_cell_formatter
 
 import cc_sessions_man.delete as delete_mod
@@ -86,19 +87,29 @@ def test_trash_session_uses_live_state_not_scan_state(tmp_path, trashed):
     assert trashed
 
 
-def run_ui(home, monkeypatch, steps, notifications=False):
+def run_ui(home, monkeypatch, steps, notifications=False, size=(160, 40)):
     monkeypatch.setattr(ui, "CACHE_PATH", home / "cache.json")
     monkeypatch.setattr(ui, "Cache", lambda _p: Cache(home / "cache.json"))
 
     async def go():
         app = ui.SessionsApp(home, "haiku", use_llm=False)
-        async with app.run_test(size=(160, 40), notifications=notifications) as pilot:
+        async with app.run_test(size=size, notifications=notifications) as pilot:
             await app.workers.wait_for_complete()
             await pilot.pause()
             await steps(app, pilot)
             return {r.session.session_id for r in app.rows}
 
     return asyncio.run(go())
+
+
+async def footer_and_keys_panel(app, pilot):
+    """The keys shown in the footer, and the keys panel's text once Ctrl+K opens it."""
+    footer = {k.key for k in app.screen.query("FooterKey")}
+    await pilot.press("ctrl+k")
+    await pilot.pause()
+    with app.console.capture() as capture:
+        app.console.print(app.screen.query_one("BindingsTable").render())
+    return footer, Text.from_ansi(capture.get()).plain
 
 
 def select_header(app, key):
@@ -630,7 +641,7 @@ def test_classifying_set_is_only_changed_on_the_main_thread(tmp_path, monkeypatc
     assert writers and all(writers)
 
 
-def test_k_toggles_keys_panel(tmp_path, monkeypatch):
+def test_ctrl_k_toggles_keys_panel(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa"])
 
     async def steps(app, pilot):
@@ -638,15 +649,16 @@ def test_k_toggles_keys_panel(tmp_path, monkeypatch):
             return bool(app.screen.query("HelpPanel"))
 
         assert not panel()
-        await pilot.press("k")
+        await pilot.press("ctrl+k")
         await pilot.pause()
         assert panel()
-        await pilot.press("k")
+        await pilot.press("ctrl+k")
         await pilot.pause()
         assert not panel()
-        await pilot.press("/", "k")  # typing in the search box isn't a shortcut
+        # In the search box, Ctrl+K keeps its editing meaning: delete to the end.
+        await pilot.press("/", "a", "b", "c", "left", "left", "ctrl+k")
         await pilot.pause()
-        assert not panel() and app.query_one("#search", ui.Input).value == "k"
+        assert not panel() and app.query_one("#search", ui.Input).value == "a"
 
     run_ui(home, monkeypatch, steps)
 

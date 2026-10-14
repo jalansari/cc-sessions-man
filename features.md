@@ -612,7 +612,13 @@ Each session gets exactly one status.
 
 ## Keys help
 
-- **`k`:** shows or hides Textual's keys panel, listing every key and what it does.
+- **Ctrl+K:** shows or hides Textual's keys panel, listing every key and what it does.
+  - Hidden from the footer; the command palette's Keys entry opens the same panel.
+  - In the search box, Ctrl+K keeps the text box's meaning (delete to the end), so it doesn't open the panel there.
+- **Vim keys:** `k` / `j` move up and down like ↑ / ↓, and `h` / `l` scroll sideways like ← / →.
+  - Hidden from the footer, but listed in the keys panel next to the arrow they match while the table has focus (the panel lists the focused widget's keys).
+  - Only in the table: typed into the search box, they're just letters.
+  - `k` showed the keys panel before; it moved to Ctrl+K to free `k` for moving up.
 - **`s` entry:** lists the four sort orders, one per line.
 - **README:** its key table documents every key.
 
@@ -628,7 +634,7 @@ Each session gets exactly one status.
   - Uses an ASCII marker, so alignment holds in terminals that draw `●` two columns wide.
   - Wraps Textual's theme list, so Textual's own listing and search behaviour carry through.
   - A test checks that the built-in Theme command opens the marked list.
-- **Theme keys:** hidden from the footer, but listed in the keys panel (`k`).
+- **Theme keys:** hidden from the footer, but listed in the keys panel (Ctrl+K).
   - **Ctrl+T:** the next theme, in the theme picker's (alphabetical) order, wrapping round at the end.
   - **Ctrl+Y:** the previous theme, wrapping round at the start.
   - **Ctrl+R:** back to the theme the app starts with: `textual-dark`, or the one set by the `TEXTUAL_THEME` environment variable.

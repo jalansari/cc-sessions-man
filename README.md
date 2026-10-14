@@ -164,7 +164,8 @@ It shows a table of sessions with status, start time, last activity, title, fold
 
 | Key | Action |
 |---|---|
-| ↑ / ↓ | Move between sessions |
+| ↑ / ↓, or `k` / `j` | Move between sessions |
+| ← / →, or `h` / `l` | Scroll the table sideways when it's wider than the window |
 | Enter | Resume the session: the UI closes and runs `claude --resume` in the session's folder |
 | `p` | Show only sessions that need you (decision, action, interrupted) |
 | `a` | Show all sessions: resets the group drop-down to All, clears the search, and clears or stops an AI search |
@@ -178,7 +179,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
-| `k` | Show or hide the keys panel, which lists every key and what it does |
+| Ctrl+K | Show or hide the keys panel, which lists every key and what it does. Listed in the keys panel, not the footer; Ctrl+P > Keys opens it too. In the search box, Ctrl+K deletes to the end of the text instead |
 | Ctrl+T / Ctrl+Y | Switch to the next or previous theme, in the order of the Ctrl+P theme list. Listed in the keys panel, not the footer |
 | Ctrl+R | Go back to the default theme: `textual-dark`, or the one set by `TEXTUAL_THEME`. Listed in the keys panel, not the footer |
 | `q` | Quit |

@@ -50,6 +50,6 @@ requirements.
   as plain Ctrl+letter, and the desktop or terminal often takes those chords anyway. Prefer
   plain Ctrl+letter or single keys.
 - Bindings with `show=False` stay out of the footer but are still listed in the keys panel
-  (`k`).
+  (Ctrl+K).
 - `DataTable` cells and headings should be `Text`, never `str`: a `str` is read as Rich markup.
 - Avoid overriding private Textual methods: prefer accepting a small limitation.
