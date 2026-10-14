@@ -79,3 +79,27 @@ def test_batch_size_and_jobs_must_be_positive(tmp_path, capsys):
     from cc_sessions_man.classify import classify
     with pytest.raises(ValueError):
         classify([], Cache(tmp_path / "c.json"), batch_size=0)
+
+
+def test_failed_refresh_keeps_old_labels(tmp_path, monkeypatch, capsys):
+    home = make_home(tmp_path, ["a", "b"])
+    cache = Cache(cli.CACHE_PATH)
+    for sid in ("a", "b"):
+        cache.put(parse_transcript(home / "projects" / "-w" / f"{sid}.jsonl"), "decision", "")
+    cache.save()
+
+    def offline(prompt, model):
+        raise RuntimeError("network unreachable")
+
+    monkeypatch.setattr(classify_mod, "_run_claude", offline)
+    cli.main(["--claude-home", str(home), "--refresh", "--json"])
+    rows = json.loads(capsys.readouterr().out)
+    assert {r["group"] for r in rows} == {"error"}  # the refresh itself is reported as failed...
+    saved = json.loads(cli.CACHE_PATH.read_text())
+    assert {k: v["label"] for k, v in saved.items()} == {"a": "decision", "b": "decision"}  # ...but nothing lost
+
+    monkeypatch.setattr(classify_mod, "_run_claude", fake_claude("done"))
+    cli.main(["--claude-home", str(home), "--refresh", "--json"])
+    capsys.readouterr()
+    saved = json.loads(cli.CACHE_PATH.read_text())
+    assert {k: v["label"] for k, v in saved.items()} == {"a": "done", "b": "done"}  # success replaces them

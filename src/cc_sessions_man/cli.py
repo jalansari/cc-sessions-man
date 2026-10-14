@@ -126,12 +126,12 @@ def main(argv=None) -> int:
         sessions = sessions[: args.limit]
 
     cache = Cache(CACHE_PATH)
-    if args.refresh:
-        # Only forget the sessions this run will classify again; filters like -n or
-        # --days must not throw away everyone else's labels.
-        for s in sessions:
-            cache.drop(s.session_id)
     labels, todo = cache.partition(sessions)
+    if args.refresh:
+        # Send every listed finished session again, but keep the old labels until new ones
+        # arrive: classify() overwrites on success, and a failed batch must not lose them.
+        # Sessions outside -n / --days aren't listed, so they're never touched.
+        todo = [s for s in sessions if s.session_id in labels] + todo
     if not args.no_llm:
         def progress(msg):
             print(msg, file=sys.stderr)
