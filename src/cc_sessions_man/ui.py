@@ -49,6 +49,9 @@ from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT,
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
 
+# The sort mark in a column heading, coloured so it stands apart from the name.
+SORT_MARK_STYLE = "bold #61afef"
+
 GROUP_STYLE = {
     "running": "bold #4ec96b",
     "decision": "bold #f0b429",
@@ -869,12 +872,14 @@ class SessionsApp(App[Session | None]):
                     *(cell_len(str(row[n])) for row in cells),
                 ]
             )
+            heading = Text(label, justify="right" if key in RIGHT_ALIGNED else "left")
             if key in self.sort_keys:
                 i = self.sort_keys.index(key)
                 mark = "v" if self.descending(i) else "^"
-                label = f"{label} {mark}{i + 1 if len(self.sort_keys) > 1 else ''}"
+                number = i + 1 if len(self.sort_keys) > 1 else ""
+                heading.append(f" {mark}{number}", style=SORT_MARK_STYLE)
             table.add_column(
-                Text(label, justify="right") if key in RIGHT_ALIGNED else label,
+                heading,
                 key=key,
                 width=width,
             )
