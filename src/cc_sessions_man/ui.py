@@ -224,9 +224,9 @@ class SessionsApp(App[Session | None]):
         Binding("a", "all", "All"),
         Binding("/", "focus_search", "Search"),
         Binding("space", "toggle_mark", "Mark"),
-        Binding("u", "clear_marks", "Unmark all"),
+        Binding("u", "unmark_all", "Unmark all"),
         # Most terminals send plain Space for Shift+Space; this only fires where Shift is reported.
-        Binding("shift+space", "clear_marks", "Unmark all", show=False),
+        Binding("shift+space", "clear_marks_or_mark", "Unmark all", show=False),
         Binding("n", "rename", "Rename"),
         Binding("d", "delete", "Delete"),
         Binding("escape", "focus_table", "Table", show=False),
@@ -481,13 +481,18 @@ class SessionsApp(App[Session | None]):
         self.render_table()
         table.move_cursor(row=min(row + 1, table.row_count - 1))  # step down, like a file manager
 
-    def action_clear_marks(self) -> None:
-        """Unmark everything; with nothing marked, mark the current row like Space."""
-        if not self.marked:
+    def action_unmark_all(self) -> None:
+        """Unmark everything. Never marks: "u to be safe" must not set up a delete."""
+        if self.marked:
+            self.marked.clear()
+            self.render_table()
+
+    def action_clear_marks_or_mark(self) -> None:
+        """Shift+Space: unmark everything; with nothing marked, mark the current row like Space."""
+        if self.marked:
+            self.action_unmark_all()
+        else:
             self.action_toggle_mark()
-            return
-        self.marked.clear()
-        self.render_table()
 
     def action_rename(self) -> None:
         r = self.current_row()

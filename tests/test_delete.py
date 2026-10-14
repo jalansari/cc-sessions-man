@@ -219,10 +219,12 @@ def test_ui_shift_space_clears_marks_or_marks_one(tmp_path, monkeypatch):
         assert app.marked == {"ccc", "bbb"}
         await pilot.press("shift+space")  # something marked: clears them all
         assert app.marked == set()
-        await pilot.press("ctrl+home", "space", "space", "u")  # u does the same, in any terminal
+        await pilot.press("ctrl+home", "space", "space", "u")  # u unmarks too, in any terminal
         assert app.marked == set()
-        await pilot.press("u")
-        assert len(app.marked) == 1
+        cursor = app.query_one(ui.DataTable).cursor_row
+        await pilot.press("u")  # nothing marked: u must not mark anything
+        assert app.marked == set()
+        assert app.query_one(ui.DataTable).cursor_row == cursor
 
     run_ui(home, monkeypatch, steps)
 

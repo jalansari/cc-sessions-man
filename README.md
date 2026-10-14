@@ -83,8 +83,8 @@ It shows a table of sessions with status, start time, last activity, title and f
 | `a` | Show all sessions: resets the group drop-down to All and clears the search |
 | `/` | Filter by title, folder or session ID. Enter or Esc returns to the table |
 | `Space` | Mark or unmark the session for deletion, and move down a row |
-| `u` | Unmark all. With nothing marked, it marks the current session, like `Space` |
-| `Shift+Space` | Same as `u`, in terminals that report Shift with Space. Many don't, and send a plain Space |
+| `u` | Unmark all. Does nothing when nothing is marked |
+| `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
 | `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
