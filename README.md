@@ -119,6 +119,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 - The headings show the current sort: `^` for ascending (A to Z, lowest first) and `v` for descending (newest or largest first).
   With several sort columns, the marks are numbered by precedence: in `Status ^1` and `Last activity v2`, status is the primary sort and last activity the secondary.
   A single-column sort from a header click shows just `^` or `v`.
+  The marks are shown in blue, so they stand apart from the column names.
 - Column widths fit every session, not just the ones shown, and leave room for the sort mark.
   Sorting, searching and filtering never change them; they only change when a refresh adds, removes or updates sessions.
   Status sorts by rank (needs you first), last activity newest first, and folder A to Z.
@@ -141,6 +142,8 @@ It shows a table of sessions with status, start time, last activity, title, fold
 | `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new, changed or failed sessions. If a scan or classification is already running, it runs again straight after. A run without errors lifts a classification pause |
 | `k` | Show or hide the keys panel, which lists every key and what it does |
+| Ctrl+T / Ctrl+Y | Switch to the next or previous theme, in the order of the Ctrl+P theme list. Listed in the keys panel, not the footer |
+| Ctrl+R | Go back to the default theme, `textual-dark`. Listed in the keys panel, not the footer |
 | `q` | Quit |
 
 Use the drop-down at the top left to show a single group.

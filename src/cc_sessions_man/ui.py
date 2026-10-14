@@ -49,6 +49,8 @@ from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT,
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
 
+DEFAULT_THEME = "textual-dark"
+
 # The sort mark in a column heading, coloured so it stands apart from the name.
 SORT_MARK_STYLE = "bold #61afef"
 
@@ -534,6 +536,10 @@ class SessionsApp(App[Session | None]):
         Binding("d", "delete", "Delete"),
         Binding("k", "toggle_keys", "Keys"),
         Binding("escape", "focus_table", "Table", show=False),
+        # Theme keys: listed in the keys panel (k), not the footer.
+        Binding("ctrl+t", "cycle_theme(1)", "Next theme", show=False),
+        Binding("ctrl+y", "cycle_theme(-1)", "Previous theme", show=False),
+        Binding("ctrl+r", "default_theme", "Default theme", show=False),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -1245,6 +1251,18 @@ class SessionsApp(App[Session | None]):
             self.action_hide_help_panel()
         else:
             self.action_show_help_panel()
+
+    def action_cycle_theme(self, step: int) -> None:
+        """Ctrl+T, Ctrl+Y: the next or previous theme, in the palette's order."""
+        names = sorted(self.available_themes)
+        i = names.index(self.theme) if self.theme in names else -1
+        self.theme = names[(i + step) % len(names)]
+        self.notify(f"Theme: {self.theme}")
+
+    def action_default_theme(self) -> None:
+        """Ctrl+R: back to the default theme."""
+        self.theme = DEFAULT_THEME
+        self.notify(f"Theme: {self.theme}")
 
     def action_cycle_sort(self) -> None:
         """s: step through SORT_MODES. From a column-header sort, start at the first."""

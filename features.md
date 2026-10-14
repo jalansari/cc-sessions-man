@@ -302,6 +302,8 @@ Each session gets exactly one status.
   - Status by rank counts as ascending; newest-first dates and largest-first context count as descending.
   - With several sort columns, the marks are numbered by precedence (primary, secondary, tertiary), for example `Status ^1`, `Last activity v2`.
   - ASCII marks, because arrows such as `↑` `↓` have an ambiguous width in some terminals.
+  - The marks and their numbers are bold blue, so they stand apart from the column names.
+    - While the mouse is over the headings, Textual's hover colour turns them white. Keeping the blue would mean overriding a private Textual method, so this is accepted.
 - **Notice:** each press names the order, for example "Sort 3 of 4: folder, then status, then last activity".
 - **Header clicks:** clicking a heading sorts by that column alone, marked without a number (`Started v`).
   - A second click reverses it (`Started ^`).
@@ -623,6 +625,13 @@ Each session gets exactly one status.
   - Uses an ASCII marker, so alignment holds in terminals that draw `●` two columns wide.
   - Wraps Textual's theme list, so Textual's own listing and search behaviour carry through.
   - A test checks that the built-in Theme command opens the marked list.
+- **Theme keys:** hidden from the footer, but listed in the keys panel (`k`).
+  - **Ctrl+T:** the next theme, in the theme picker's (alphabetical) order, wrapping round at the end.
+  - **Ctrl+Y:** the previous theme, wrapping round at the start.
+  - **Ctrl+R:** back to the default theme, `textual-dark`.
+  - Each press names the new theme in a notice.
+  - Ctrl+Shift+T and Ctrl+Alt+T were tried first and rejected: the desktop and terminal take them (a new tab, opening a terminal), and terminals without the kitty keyboard protocol send both as Ctrl+T.
+    Ctrl+Shift+R was tried for the reset, to keep it apart from `r` (refresh), but those terminals send it as plain Ctrl+R.
 
 ## Notifications
 
