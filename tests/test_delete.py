@@ -42,19 +42,8 @@ def make_home(tmp_path, ids, cwd="/w"):
     return tmp_path
 
 
-@pytest.fixture
-def trashed(monkeypatch):
-    """Record what would go to the Trash, and actually remove it so rescans see the change."""
-    import shutil
-
-    moved = []
-
-    def fake(p):
-        moved.append(p)
-        shutil.rmtree(p) if p.is_dir() else p.unlink()
-
-    monkeypatch.setattr(delete_mod, "send2trash", fake)
-    return moved
+def column_widths(table):
+    return {k.value: c.get_render_width(table) for k, c in table.columns.items()}
 
 
 def test_trash_session_moves_all_session_files(tmp_path, trashed):
@@ -505,12 +494,17 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         app.apply_batch(labels, list(labels), len(labels))
         await pilot.pause()
         table = app.query_one(ui.DataTable)
-        order = lambda: [r.session.session_id for r in app.visible_rows()]
-        marked = lambda: {
-            str(c.label)
-            for c in table.columns.values()
-            if re.search(r" [\^v]\d?$", str(c.label))
-        }
+
+        def order():
+            return [r.session.session_id for r in app.visible_rows()]
+
+        def marked():
+            return {
+                str(c.label)
+                for c in table.columns.values()
+                if re.search(r" [\^v]\d?$", str(c.label))
+            }
+
         for n, (rows, headings) in enumerate(expected):
             if n:
                 await pilot.press("s")
@@ -635,7 +629,9 @@ def test_k_toggles_keys_panel(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa"])
 
     async def steps(app, pilot):
-        panel = lambda: bool(app.screen.query("HelpPanel"))
+        def panel():
+            return bool(app.screen.query("HelpPanel"))
+
         assert not panel()
         await pilot.press("k")
         await pilot.pause()
@@ -679,7 +675,10 @@ def test_context_column_shows_and_sorts(tmp_path, monkeypatch):
             for r in app.rows
         }
         assert cells == {"small": "1.5k", "big": "250k"}
-        width = lambda: table.columns["context"].get_render_width(table)
+
+        def width():
+            return table.columns["context"].get_render_width(table)
+
         before = width()
         select_header(app, "context")
         await pilot.pause()
@@ -751,22 +750,21 @@ def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypa
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
-        widths = lambda: {
-            k.value: c.get_render_width(table) for k, c in table.columns.items()
-        }
-        settled = widths()
+        settled = column_widths(table)
         for key in ("started", "title", "cwd", "status", "model", "context"):
             select_header(app, key)
-            assert widths() == settled, key  # straight away, before the table is idle
+            assert (
+                column_widths(table) == settled
+            ), key  # straight away, before the table is idle
         for (
             _
         ) in (
             ui.SORT_MODES
         ):  # multi-column sorts, with numbered marks, don't resize either
             app.action_cycle_sort()
-            assert widths() == settled
+            assert column_widths(table) == settled
         await pilot.pause()
-        assert widths() == settled
+        assert column_widths(table) == settled
         # Short folders: the heading with its widest mark, "Folder ^1", sets the width.
         assert settled["cwd"] == len("Folder ^1") + 2  # plus cell padding
 
@@ -843,17 +841,14 @@ def test_searching_and_filtering_keep_column_widths(tmp_path, monkeypatch):
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
-        widths = lambda: {
-            k.value: c.get_render_width(table) for k, c in table.columns.items()
-        }
-        settled = widths()
+        settled = column_widths(table)
         app.query_one("#search", ui.Input).value = "short"  # hides the long title
         await pilot.pause()
-        assert table.row_count == 1 and widths() == settled
+        assert table.row_count == 1 and column_widths(table) == settled
         app.query_one("#search", ui.Input).value = ""
         app.query_one("#group", ui.Select).value = "decision"  # no rows at all
         await pilot.pause()
-        assert table.row_count == 0 and widths() == settled
+        assert table.row_count == 0 and column_widths(table) == settled
 
     run_ui(home, monkeypatch, steps)
 

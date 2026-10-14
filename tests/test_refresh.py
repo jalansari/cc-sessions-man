@@ -5,7 +5,7 @@ import json
 import threading
 
 import pytest
-from test_delete import make_home, trashed  # noqa: F401 (trashed is a fixture)
+from test_delete import make_home
 
 import cc_sessions_man.classify as classify_mod
 import cc_sessions_man.ui as ui
