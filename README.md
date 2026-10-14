@@ -17,6 +17,10 @@ Lists every Claude Code session on this machine and says whether it is finished 
   - [How the `claude` calls are isolated](#how-the-claude-calls-are-isolated)
   - [Limits](#limits)
   - [Development](#development)
+    - [Build and publish](#build-and-publish)
+      - [Configure Publishing to Pypi](#configure-publishing-to-pypi)
+      - [Publishing to Test Pypi](#publishing-to-test-pypi)
+      - [Publishing to Pypi](#publishing-to-pypi)
     - [Benchmarking classification](#benchmarking-classification)
 
 
@@ -299,6 +303,75 @@ For AI search that's whatever parts of the transcripts Claude reads while search
 
 ```sh
 uv run pytest
+```
+
+### Build and publish
+
+Build the distribution:
+
+```sh
+uv build
+```
+
+This creates `dist/` with `.tar.gz` and `.whl` files.
+
+#### Configure Publishing to Pypi
+
+Configure PyPI credentials in `~/.pypirc`:
+
+```ini
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+username = __token__
+password = pypi-<your-api-token>
+
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-<your-test-api-token>
+```
+
+API tokens can be created at:
+
+- PyPI: https://pypi.org/manage/account/token/
+- TestPyPI: https://test.pypi.org/manage/account/token/
+
+Alternatively, set credentials via environment variables instead of `~/.pypirc`:
+
+```sh
+export TWINE_USERNAME=__token__
+export TWINE_PASSWORD=pypi-<your-api-token>
+```
+
+To target TestPyPI, override the repository URL:
+
+```sh
+export TWINE_REPOSITORY_URL=https://test.pypi.org/legacy/
+```
+
+#### Publishing to Test Pypi
+
+To publish to TestPyPI first:
+
+```sh
+# Using ini file:
+uvx twine upload --repository testpypi dist/*
+
+# Or, with environment variables:
+export TWINE_REPOSITORY_URL=https://test.pypi.org/legacy/
+uvx twine upload dist/*
+```
+
+#### Publishing to Pypi
+
+Publish to PyPI:
+
+```sh
+uvx twine upload dist/*
 ```
 
 ### Benchmarking classification
