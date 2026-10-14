@@ -4,6 +4,7 @@ import argparse
 import os
 import shutil
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -11,8 +12,11 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import CommandPalette, DiscoveryHit, Hit, Hits
+from textual.content import Content
 from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
@@ -75,6 +79,31 @@ class Row:
         info = labels.get(self.session.session_id)
         self.group = group_of(self.session.state, info and info["label"])
         self.detail = detail_of(self.session, info)
+
+
+class MarkedThemeProvider(ThemeProvider):
+    """Textual's theme list, with a marker on the theme in use.
+
+    Wraps the hits from ThemeProvider rather than re-implementing it, so upstream
+    changes to listing or filtering carry through. The marker is ASCII: characters
+    like "●" are drawn two cells wide in some terminals, which would break alignment.
+    """
+
+    def _marked(self, hit: Hit | DiscoveryHit) -> Hit | DiscoveryHit:
+        shown = hit.prompt
+        marker = ("* ", "bold $accent") if hit.text == self.app.theme else "  "
+        prompt = Content.assemble(marker, shown)
+        if isinstance(hit, DiscoveryHit):
+            return replace(hit, display=prompt)
+        return replace(hit, match_display=prompt)
+
+    async def discover(self) -> Hits:
+        async for hit in super().discover():
+            yield self._marked(hit)
+
+    async def search(self, query: str) -> Hits:
+        async for hit in super().search(query):
+            yield self._marked(hit)
 
 
 class TitleBar(Horizontal):
@@ -548,6 +577,10 @@ class SessionsApp(App[Session | None]):
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
+
+    def search_themes(self) -> None:
+        """The command palette's "Theme" entry, with the current theme marked."""
+        self.push_screen(CommandPalette(providers=[MarkedThemeProvider], placeholder="Search for themes…"))
 
     def action_focus_table(self) -> None:
         self.query_one(DataTable).focus()

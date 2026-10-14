@@ -390,3 +390,34 @@ def test_main_refuses_to_resume_into_missing_folder(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(ui.os, "execve", lambda *a: pytest.fail("must not exec claude"))
     assert ui.main(["--no-llm", "--claude-home", str(tmp_path)]) == 1
     assert "no longer exists" in capsys.readouterr().err
+
+
+def test_theme_picker_marks_current_theme(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ["aaa"])
+
+    async def steps(app, pilot):
+        app.theme = "nord"
+        provider = ui.MarkedThemeProvider(app.screen)
+        shown = {hit.text: str(hit.prompt) async for hit in provider.discover()}
+        assert shown["nord"] == "* nord"
+        assert shown["dracula"] == "  dracula"
+        assert all(p.isascii() for p in shown.values())  # no ambiguous-width marker
+        found = [str(hit.prompt) async for hit in provider.search("nor")]
+        assert found == ["* nord"]
+
+    run_ui(home, monkeypatch, steps)
+
+
+def test_theme_command_opens_marked_picker(tmp_path, monkeypatch):
+    """The built-in "Theme" command must reach our provider, not Textual's plain one."""
+    from textual.command import CommandPalette
+
+    home = make_home(tmp_path, ["aaa"])
+
+    async def steps(app, pilot):
+        app.action_change_theme()  # what the command palette's "Theme" entry runs
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+        assert [type(p) for p in app.screen._providers] == [ui.MarkedThemeProvider]
+
+    run_ui(home, monkeypatch, steps)
