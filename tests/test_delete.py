@@ -397,8 +397,8 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         await pilot.click("#table", offset=(30, 0))  # a header click: a single-column sort
         await pilot.pause()
         assert marked() == {"Started v"}  # one sort column: no number; newest first
-        # A second click reverses it (by key: the headings have shifted now Status lost its mark).
-        select_header(app, "started")
+        await pilot.click("#table", offset=(30, 0))  # a second click in the same place reverses it
+        await pilot.pause()
         await pilot.pause()
         assert marked() == {"Started ^"}
         await pilot.press("s")  # from there, s starts again at 1
@@ -570,10 +570,24 @@ def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
     run_ui(home, monkeypatch, steps)
 
 
-def test_fixed_width_headings_fit_every_sort_mark():
-    """A fixed-width column must fit its heading with any mark it can get, or the mark is cut off."""
-    for key, width in ui.COLUMN_WIDTHS.items():
-        label = dict(ui.COLUMNS)[key]
-        numbered = any(key in mode for mode in ui.SORT_MODES)  # in a multi-column sort: "^1"
-        longest = f"{label} v{len(max(ui.SORT_MODES, key=len))}" if numbered else f"{label} v"
-        assert len(longest) <= width, f"{key}: {longest!r} doesn't fit in {width}"
+def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypatch):
+    # Columns sized themselves only once the table was idle, so between quick clicks they
+    # shrank to their headings' width. Widths are now set when the columns are made.
+    home = make_home(tmp_path, ["a-session-with-a-long-enough-title", "b"])
+
+    async def steps(app, pilot):
+        table = app.query_one(ui.DataTable)
+        widths = lambda: {k.value: c.get_render_width(table) for k, c in table.columns.items()}
+        settled = widths()
+        for key in ("started", "title", "cwd", "status", "model", "context"):
+            select_header(app, key)
+            assert widths() == settled, key  # straight away, before the table is idle
+        for _ in ui.SORT_MODES:  # multi-column sorts, with numbered marks, don't resize either
+            app.action_cycle_sort()
+            assert widths() == settled
+        await pilot.pause()
+        assert widths() == settled
+        # Short folders: the heading with its widest mark, "Folder ^1", sets the width.
+        assert settled["cwd"] == len("Folder ^1") + 2  # plus cell padding
+
+    run_ui(home, monkeypatch, steps)

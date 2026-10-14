@@ -10,6 +10,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -64,11 +65,13 @@ SORT_MODES = [
     ("cwd", "status", "last"),
     ("last", "cwd", "status"),
 ]
-# Fixed widths, so adding a sort mark doesn't resize the column. The heading sets Context's
-# width: "Context v" is 9, and wider than any value ("134k", "1.0M"). It's in no SORT_MODES
-# entry, so its mark never gets a number (a test checks every possible heading fits).
-# Headings of these columns are right-aligned to match their values.
-COLUMN_WIDTHS = {"context": len("Context v")}
+# Columns whose heading is right-aligned, to match their values.
+RIGHT_ALIGNED = {"context"}
+
+
+def mark_room(key: str) -> int:
+    """Width a sort mark can add to a heading: " v", plus a digit in a multi-column sort."""
+    return 2 + any(key in mode for mode in SORT_MODES)
 COLUMN_NAMES = {
     "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
     "context": "context size", "model": "model",
@@ -361,7 +364,7 @@ class SessionsApp(App[Session | None]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        self.add_columns(table)
+        self.add_columns(table, [])
         table.focus()
         self.start_load()
         if self.refresh_interval > 0:
@@ -518,18 +521,39 @@ class SessionsApp(App[Session | None]):
         """Whether the i-th sort key runs descending; a second header click flips the primary."""
         return SORT_KEYS[self.sort_keys[i]][1] ^ (i == 0 and self.sort_flipped)
 
-    def add_columns(self, table: DataTable) -> None:
+    def add_columns(self, table: DataTable, cells: list[tuple]) -> None:
         """Column headings marked with the sort: ^ ascending, v descending.
 
         With several sort keys, the marks are numbered by precedence: Status ^1, Last activity v2.
+
+        Each column gets an explicit width: the widest of its cells and its heading with the
+        longest mark it can get, so sorting never resizes a column or moves the headings.
+        Left to size itself, a new column starts as wide as its heading and the table only
+        measures the cells once it's idle, so quick header clicks showed squashed frames.
         """
-        for key, label in COLUMNS:
+        for n, (key, label) in enumerate(COLUMNS):
+            width = max([cell_len(label) + mark_room(key), *(cell_len(str(row[n])) for row in cells)])
             if key in self.sort_keys:
                 i = self.sort_keys.index(key)
                 mark = "v" if self.descending(i) else "^"
                 label = f"{label} {mark}{i + 1 if len(self.sort_keys) > 1 else ''}"
-            width = COLUMN_WIDTHS.get(key)
-            table.add_column(Text(label, justify="right") if width else label, key=key, width=width)
+            table.add_column(Text(label, justify="right") if key in RIGHT_ALIGNED else label, key=key, width=width)
+
+    def row_cells(self, r: Row) -> tuple:
+        """One table row's cells, in COLUMNS order."""
+        s = r.session
+        status = self.status_text(r)
+        if s.session_id in self.marked:
+            status = Text.assemble(("● ", "bold #f25f5c"), status)
+        return (
+            status,
+            local_time(s.started),
+            local_time(s.last_timestamp),
+            truncate_words(s.title),
+            truncate_start(short_path(s.cwd)),
+            Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
+            short_model(s.model),
+        )
 
     def render_table(self) -> None:
         table = self.query_one(DataTable)
@@ -537,24 +561,12 @@ class SessionsApp(App[Session | None]):
         # Where the cursor sits on screen, so the selected row can stay put after the rebuild.
         screen_offset = table.cursor_row - round(table.scroll_y)
         scroll_x = table.scroll_x
-        table.clear(columns=True)  # re-add columns so the headings show the current sort
-        self.add_columns(table)
         rows = self.visible_rows()
-        for r in rows:
-            s = r.session
-            status = self.status_text(r)
-            if s.session_id in self.marked:
-                status = Text.assemble(("● ", "bold #f25f5c"), status)
-            table.add_row(
-                status,
-                local_time(s.started),
-                local_time(s.last_timestamp),
-                truncate_words(s.title),
-                truncate_start(short_path(s.cwd)),
-                Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
-                short_model(s.model),
-                key=s.session_id,
-            )
+        cells = [self.row_cells(r) for r in rows]
+        table.clear(columns=True)  # re-add columns so the headings show the current sort
+        self.add_columns(table, cells)
+        for r, row in zip(rows, cells):
+            table.add_row(*row, key=r.session.session_id)
         if selected:
             index = next(
                 (i for i, r in enumerate(rows) if r.session.session_id == selected.session.session_id), None
