@@ -52,7 +52,7 @@ It returns a label and a short note on what is still outstanding.
 ## Run
 
 ```sh
-cd /path/to/cc-sessions-man
+cd cc-sessions-man
 uv run cc-sessions                 # all sessions, grouped
 uv run cc-sessions --pending       # only decision / action / interrupted
 uv run cc-sessions --days 7        # only the last week

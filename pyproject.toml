@@ -3,9 +3,7 @@ name = "cc-sessions-man"
 version = "0.1.0"
 description = "List Claude Code sessions and whether each is done or waiting on you"
 readme = "README.md"
-authors = [
-    { name = "j" }
-]
+authors = [{ name = "j" }]
 requires-python = ">=3.14"
 dependencies = [
     "send2trash>=2.1.0",
