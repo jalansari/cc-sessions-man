@@ -71,8 +71,10 @@ It shows a table of sessions with status, start time, last activity, title and f
   The progress (for example `Classifying 15/35`) shows in the header.
   Change these with `--batch-size N` and `--jobs N`.
 - By default it sorts by status rank, with the newest last activity first within each status.
-- Click a column header to sort by it. Click it again to reverse the order.
-  Sorting by status always keeps the newest sessions first within each status.
+- `s` cycles through four sort orders (see the keys below).
+- Click a column header to sort by that column alone. Click it again to reverse the order.
+- The headings show the current sort: `^1` marks the primary sort column, `^2` the secondary and `^3` the tertiary.
+  Status sorts by rank (needs you first), last activity newest first, and folder A to Z.
 - The panel at the bottom shows the selected session's outstanding work, full ID and folder.
 
 | Key | Action |
@@ -87,7 +89,7 @@ It shows a table of sessions with status, start time, last activity, title and f
 | `Shift+Space` | Unmark all; with nothing marked, it marks the current session, like `Space`. Only in terminals that report Shift with Space; many send a plain Space |
 | `n` | Rename the selected session. Enter saves, Esc cancels |
 | `d` | Delete the marked sessions, or the selected one if none are marked. Asks first |
-| `s` | Toggle sorting by folder: folder, then status, then newest first. Press again to go back to status, then newest first |
+| `s` | Cycle the sort order, one step per press, back to 1 after 4:<br>1. Status, then last activity<br>2. Last activity, then status<br>3. Folder, then status, then last activity<br>4. Last activity, then folder, then status<br>From a column-header sort, `s` starts again at 1 |
 | `r` | Rescan and classify any new or changed sessions. Not available while a scan or classification is still running |
 | `q` | Quit |
 

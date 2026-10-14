@@ -39,6 +39,24 @@ GROUP_STYLE = {
 }
 
 COLUMNS = [("status", "Status"), ("started", "Started"), ("last", "Last activity"), ("title", "Title"), ("cwd", "Folder")]
+
+# How each column sorts: key function and whether it runs descending by default.
+SORT_KEYS = {
+    "status": (lambda r: STATUS_RANK[r.group], False),  # needs you first
+    "started": (lambda r: r.session.started, True),  # newest first
+    "last": (lambda r: r.session.last_timestamp, True),  # newest first
+    "title": (lambda r: r.session.title.lower(), False),
+    "cwd": (lambda r: r.session.cwd, False),
+}
+
+# The orders the s key cycles through: (primary, secondary, tertiary).
+SORT_MODES = [
+    ("status", "last"),
+    ("last", "status"),
+    ("cwd", "status", "last"),
+    ("last", "cwd", "status"),
+]
+COLUMN_NAMES = {"status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder"}
 TITLE_MAX = 50
 
 
@@ -220,7 +238,11 @@ class SessionsApp(App[Session | None]):
     """
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
-        Binding("s", "toggle_folder_sort", "Sort"),
+        Binding(
+            "s", "cycle_sort", "Sort",
+            tooltip="Cycle the sort order:\n1) status, last activity\n2) last activity, status\n"
+            "3) folder, status, last activity\n4) last activity, folder, status",
+        ),
         Binding("p", "pending", "Pending"),
         Binding("a", "all", "All"),
         Binding("/", "focus_search", "Search"),
@@ -248,8 +270,8 @@ class SessionsApp(App[Session | None]):
         self.cache = Cache(CACHE_PATH)
         self.rows: list[Row] = []
         self.marked: set[str] = set()  # session IDs picked for deletion
-        self.sort_column = "status"
-        self.sort_reverse = False
+        self.sort_keys: tuple[str, ...] = SORT_MODES[0]  # primary first
+        self.sort_flipped = False  # header clicked twice: primary runs the other way
         self.loading = False  # a scan/classify worker is running
         self.error_notified = False  # shown the "classification failed" notice this run
 
@@ -265,8 +287,7 @@ class SessionsApp(App[Session | None]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        for key, label in COLUMNS:
-            table.add_column(label, key=key)
+        self.add_columns(table)
         table.focus()
         self.start_load()
 
@@ -356,29 +377,26 @@ class SessionsApp(App[Session | None]):
             if needle and needle not in f"{s.title} {s.cwd} {s.session_id}".lower():
                 continue
             out.append(r)
-        if self.sort_column in ("status", "folder"):
-            # Newest first within each status, whichever way the status order runs.
-            # (Folder sort is only entered with sort_reverse False, via the s key.)
-            out.sort(key=lambda r: r.session.last_timestamp, reverse=True)
-            out.sort(key=lambda r: STATUS_RANK[r.group], reverse=self.sort_reverse)
-            if self.sort_column == "folder":
-                # Stable sort: within a folder, the status-then-date order above is kept.
-                out.sort(key=lambda r: r.session.cwd)
-            return out
-        key = {
-            "started": lambda r: r.session.started,
-            "last": lambda r: r.session.last_timestamp,
-            "title": lambda r: r.session.title.lower(),
-            "cwd": lambda r: r.session.cwd,
-        }[self.sort_column]
-        return sorted(out, key=key, reverse=self.sort_reverse)
+        # Stable sorts, least significant first, so each key orders ties in the one before.
+        for i, name in reversed(list(enumerate(self.sort_keys))):
+            fn, descending = SORT_KEYS[name]
+            out.sort(key=fn, reverse=descending ^ (i == 0 and self.sort_flipped))
+        return out
+
+    def add_columns(self, table: DataTable) -> None:
+        """Column headings, with ^1 / ^2 / ^3 on the primary, secondary and tertiary sort."""
+        for key, label in COLUMNS:
+            if key in self.sort_keys:
+                label = f"{label} ^{self.sort_keys.index(key) + 1}"
+            table.add_column(label, key=key)
 
     def render_table(self) -> None:
         table = self.query_one(DataTable)
         selected = self.current_row()
         # Where the cursor sits on screen, so the selected row can stay put after the rebuild.
         screen_offset = table.cursor_row - round(table.scroll_y)
-        table.clear()
+        table.clear(columns=True)  # re-add columns so the headings show the current sort
+        self.add_columns(table)
         rows = self.visible_rows()
         for r in rows:
             s = r.session
@@ -444,10 +462,10 @@ class SessionsApp(App[Session | None]):
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col = event.column_key.value
-        if col == self.sort_column:
-            self.sort_reverse = not self.sort_reverse
+        if self.sort_keys == (col,):
+            self.sort_flipped = not self.sort_flipped
         else:
-            self.sort_column, self.sort_reverse = col, col in ("started", "last")
+            self.sort_keys, self.sort_flipped = (col,), False
         self.render_table()
 
     def on_select_changed(self, _event) -> None:
@@ -588,14 +606,15 @@ class SessionsApp(App[Session | None]):
         for msg in leftovers:
             self.notify(msg, title="Deleted, but some files were left behind", severity="warning", timeout=10)
 
-    def action_toggle_folder_sort(self) -> None:
-        """s: switch between folder > status > date and the usual status > date."""
-        if self.sort_column == "folder":
-            self.sort_column, self.sort_reverse = "status", False
-            self.notify("Sorted by status, then date.")
+    def action_cycle_sort(self) -> None:
+        """s: step through SORT_MODES. From a column-header sort, start at the first."""
+        if self.sort_keys in SORT_MODES and not self.sort_flipped:
+            mode = (SORT_MODES.index(self.sort_keys) + 1) % len(SORT_MODES)
         else:
-            self.sort_column, self.sort_reverse = "folder", False
-            self.notify("Sorted by folder, then status, then date.")
+            mode = 0
+        self.sort_keys, self.sort_flipped = SORT_MODES[mode], False
+        order = ", then ".join(COLUMN_NAMES[k] for k in self.sort_keys)
+        self.notify(f"Sort {mode + 1} of {len(SORT_MODES)}: {order}.")
         self.render_table()
 
     def action_refresh(self) -> None:

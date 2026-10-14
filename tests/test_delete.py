@@ -425,34 +425,59 @@ def test_theme_command_opens_marked_picker(tmp_path, monkeypatch):
     run_ui(home, monkeypatch, steps)
 
 
-def test_s_toggles_folder_sort(tmp_path, monkeypatch):
-    # Two folders, each with an "action" and a "done" session, at different times.
+def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
     proj = tmp_path / "projects" / "-w"
     proj.mkdir(parents=True)
     (tmp_path / "sessions").mkdir()
-    layout = [  # (session id, folder, minute)
-        ("b-done-new", "/b", 40), ("a-act-old", "/a", 10), ("b-act-old", "/b", 20),
-        ("a-done-new", "/a", 50), ("a-act-new", "/a", 30),
+    layout = [  # (session id, folder, minute of last activity, label); the two "tie"s share a time
+        ("a-act-old", "/a", 10, "action"), ("b-act-old", "/b", 20, "action"),
+        ("a-tie", "/a", 25, "done"), ("b-tie", "/b", 25, "action"),
+        ("a-act-new", "/a", 30, "action"), ("b-done-new", "/b", 40, "done"), ("a-done-new", "/a", 50, "done"),
     ]
-    for sid, folder, minute in layout:
+    for sid, folder, minute, _ in layout:
         (proj / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
             {"type": "user", "message": {"content": sid}, "cwd": folder, "timestamp": f"2026-10-01T10:{minute:02d}:00Z"},
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}, "timestamp": f"2026-10-01T10:{minute:02d}:30Z"},
         ]))
-    labels = {sid: {"label": "action" if "act" in sid else "done", "pending": ""} for sid, _, _ in layout}
+    labels = {sid: {"label": label, "pending": ""} for sid, _, _, label in layout}
+
+    expected = [
+        # 1) status, then last activity
+        (["a-act-new", "b-tie", "b-act-old", "a-act-old", "a-done-new", "b-done-new", "a-tie"],
+         {"Status ^1", "Last activity ^2"}),
+        # 2) last activity, then status (the tie: action before done)
+        (["a-done-new", "b-done-new", "a-act-new", "b-tie", "a-tie", "b-act-old", "a-act-old"],
+         {"Last activity ^1", "Status ^2"}),
+        # 3) folder, then status, then last activity
+        (["a-act-new", "a-act-old", "a-done-new", "a-tie", "b-tie", "b-act-old", "b-done-new"],
+         {"Folder ^1", "Status ^2", "Last activity ^3"}),
+        # 4) last activity, then folder, then status (the tie: /a before /b)
+        (["a-done-new", "b-done-new", "a-act-new", "a-tie", "b-tie", "b-act-old", "a-act-old"],
+         {"Last activity ^1", "Folder ^2", "Status ^3"}),
+    ]
 
     async def steps(app, pilot):
         app.apply_batch(labels, list(labels), len(labels))
         await pilot.pause()
+        table = app.query_one(ui.DataTable)
         order = lambda: [r.session.session_id for r in app.visible_rows()]
-        assert order() == ["a-act-new", "b-act-old", "a-act-old", "a-done-new", "b-done-new"]  # status, then date
-        await pilot.press("s")
-        assert order() == ["a-act-new", "a-act-old", "a-done-new", "b-act-old", "b-done-new"]  # folder, status, date
-        await pilot.press("s")
-        assert order() == ["a-act-new", "b-act-old", "a-act-old", "a-done-new", "b-done-new"]  # back again
+        marked = lambda: {str(c.label) for c in table.columns.values() if "^" in str(c.label)}
+        for n, (rows, headings) in enumerate(expected):
+            if n:
+                await pilot.press("s")
+                await pilot.pause()
+            assert (order(), marked()) == (rows, headings), f"sort {n + 1}"
+        await pilot.press("s")  # wraps round to 1
+        await pilot.pause()
+        assert (order(), marked()) == expected[0]
+        await pilot.click("#table", offset=(30, 0))  # a header click: a single-column sort
+        await pilot.pause()
+        assert marked() == {"Started ^1"}
+        await pilot.press("s")  # from there, s starts again at 1
+        await pilot.pause()
+        assert marked() == expected[0][1]
 
     run_ui(tmp_path, monkeypatch, steps)
-
 
 def test_trash_session_tries_every_file_and_reports_failures(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa"])
