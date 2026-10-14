@@ -26,7 +26,12 @@ def test_split_path():
 
 
 def test_subfolders_lists_folders_only_and_hides_dot_folders(home):
-    assert subfolders("~/", "") == ["Alpha", "alps", "beta", "beta-link"]  # A to Z, ignoring case
+    assert subfolders("~/", "") == [
+        "Alpha",
+        "alps",
+        "beta",
+        "beta-link",
+    ]  # A to Z, ignoring case
     assert subfolders("~/", "al") == ["alps"]  # case-sensitive prefix
     assert subfolders("~/", ".") == [".hidden"]  # hidden only when asked for
     with pytest.raises(OSError):
@@ -57,7 +62,10 @@ def test_problem_span_marks_the_bad_part(home):
     assert problem_span("~/Al") is None
     assert problem_span("~/zz") == (2, 4)  # no folder starts with "zz": the name
     assert problem_span("zz") == (0, 2)
-    assert problem_span("~/missing/x") == (0, 10)  # the folder doesn't exist: the folder part
+    assert problem_span("~/missing/x") == (
+        0,
+        10,
+    )  # the folder doesn't exist: the folder part
     assert problem_span("~/file.txt/") == (0, 11)  # a file isn't a folder
     assert problem_span("~/Alpha/inner/deeper") == (14, 20)
 
@@ -73,8 +81,12 @@ def test_highlighter_colours_the_bad_part_red(home):
 
 def test_unknown_user_in_tilde_is_red_not_a_crash(home):
     from cc_sessions_man.paths import to_path
+
     text = "~no_such_user_zz/x"
-    assert problem_span(text) == (0, len("~no_such_user_zz/"))  # used to raise RuntimeError
+    assert problem_span(text) == (
+        0,
+        len("~no_such_user_zz/"),
+    )  # used to raise RuntimeError
     assert Completer().complete(text) == text
     assert to_path(text) is None
 
@@ -82,7 +94,10 @@ def test_unknown_user_in_tilde_is_red_not_a_crash(home):
 def test_dot_and_dotdot_are_valid(home):
     assert problem_span("~/Alpha/..") is None
     assert problem_span("~/Alpha/.") is None
-    assert problem_span("~/Alpha/.x") == (8, 10)  # other hidden names still need a match
+    assert problem_span("~/Alpha/.x") == (
+        8,
+        10,
+    )  # other hidden names still need a match
 
 
 def test_unreadable_folder_is_red_even_for_a_bare_name(home):
@@ -94,8 +109,11 @@ def test_unreadable_folder_is_red_even_for_a_bare_name(home):
         home.chmod(0o700)
 
 
-def test_to_path_treats_a_bare_name_as_in_home_like_completion(home, tmp_path_factory, monkeypatch):
+def test_to_path_treats_a_bare_name_as_in_home_like_completion(
+    home, tmp_path_factory, monkeypatch
+):
     from cc_sessions_man.paths import to_path
+
     elsewhere = tmp_path_factory.mktemp("cwd")
     (elsewhere / "Alpha").mkdir()
     monkeypatch.chdir(elsewhere)  # a same-named folder where the app was started
@@ -132,4 +150,5 @@ def test_retyping_the_filled_text_starts_a_new_round(home):
             assert field.value == "~/alps"  # a new round for "alps", not on to beta
 
     import asyncio
+
     asyncio.run(go())

@@ -5,18 +5,33 @@ import json
 import threading
 
 import pytest
+from test_delete import make_home, trashed  # noqa: F401 (trashed is a fixture)
 
 import cc_sessions_man.classify as classify_mod
 import cc_sessions_man.ui as ui
 from cc_sessions_man.classify import Cache
-from test_delete import make_home, trashed  # noqa: F401 (trashed is a fixture)
 
 
 def add_session(home, sid, minute=59):
-    (home / "projects" / "-w" / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
-        {"type": "user", "message": {"content": f"prompt {sid}"}, "cwd": "/w", "timestamp": f"2026-10-01T05:{minute:02d}:00Z"},
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}, "timestamp": f"2026-10-01T05:{minute:02d}:30Z"},
-    ]) + "\n")
+    (home / "projects" / "-w" / f"{sid}.jsonl").write_text(
+        "\n".join(
+            json.dumps(e)
+            for e in [
+                {
+                    "type": "user",
+                    "message": {"content": f"prompt {sid}"},
+                    "cwd": "/w",
+                    "timestamp": f"2026-10-01T05:{minute:02d}:00Z",
+                },
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": "ok"}]},
+                    "timestamp": f"2026-10-01T05:{minute:02d}:30Z",
+                },
+            ]
+        )
+        + "\n"
+    )
 
 
 def ids(app):
@@ -24,7 +39,11 @@ def ids(app):
 
 
 def batch_ids(prompt):
-    return [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+    return [
+        line.split('"')[1]
+        for line in prompt.splitlines()
+        if line.startswith("<session id=")
+    ]
 
 
 def run_app(home, monkeypatch, steps, interval=0, use_llm=False):
@@ -63,7 +82,9 @@ def test_auto_refresh_picks_up_new_sessions_quietly(tmp_path, monkeypatch):
 
     async def steps(app, pilot):
         status_seen = []
-        app.set_status = lambda msg: status_seen.append(msg) or ui.SessionsApp.set_status(app, msg)
+        app.set_status = lambda msg: status_seen.append(
+            msg
+        ) or ui.SessionsApp.set_status(app, msg)
         add_session(home, "new")  # appears on disk while the app is open
         await until(pilot, lambda: "new" in ids(app))
         return ids(app), status_seen
@@ -102,7 +123,9 @@ def test_auto_refresh_off_with_zero(tmp_path, monkeypatch):
     assert run_app(home, monkeypatch, steps, interval=0) == {"aaa"}
 
 
-def test_unchanged_refresh_does_not_rebuild_table_or_jump_sideways(tmp_path, monkeypatch):
+def test_unchanged_refresh_does_not_rebuild_table_or_jump_sideways(
+    tmp_path, monkeypatch
+):
     home = make_home(tmp_path, ["aaa", "bbb"])
 
     async def steps(app, pilot):
@@ -158,7 +181,9 @@ def test_r_during_a_load_is_queued_not_refused(tmp_path, monkeypatch):
 
     queued, notices, found = run_app(home, monkeypatch, steps)
     assert queued is True
-    assert not any(sev == "warning" for sev, _ in notices)  # no "still scanning" refusal
+    assert not any(
+        sev == "warning" for sev, _ in notices
+    )  # no "still scanning" refusal
     assert len(scans) == 3 and "new" in found  # the queued refresh ran afterwards
 
 
@@ -178,7 +203,11 @@ def test_errors_pause_auto_classification_until_r_succeeds(tmp_path, monkeypatch
 
     monkeypatch.setattr(classify_mod, "_run_claude", flaky)
     notices = []  # recorded from startup on, so the first toast counts too
-    monkeypatch.setattr(ui.SessionsApp, "notify", lambda self, msg, **kw: notices.append(kw.get("title")))
+    monkeypatch.setattr(
+        ui.SessionsApp,
+        "notify",
+        lambda self, msg, **kw: notices.append(kw.get("title")),
+    )
 
     async def steps(app, pilot):
         await settle(app, pilot)
@@ -187,7 +216,11 @@ def test_errors_pause_auto_classification_until_r_succeeds(tmp_path, monkeypatch
         add_session(home, "new")  # a new session while paused
         await until(pilot, lambda: "new" in ids(app))
         await pilot.pause(0.6)  # several more ticks
-        paused = (len(calls), {r.session.session_id: r.group for r in app.rows}, app.sub_title)
+        paused = (
+            len(calls),
+            {r.session.session_id: r.group for r in app.rows},
+            app.sub_title,
+        )
 
         state["up"] = True  # logged back in
         await pilot.press("r")  # manual retry
@@ -195,14 +228,24 @@ def test_errors_pause_auto_classification_until_r_succeeds(tmp_path, monkeypatch
         after_r = (app.classify_paused, {r.group for r in app.rows})
 
         add_session(home, "newer")  # auto refresh classifies again
-        await until(pilot, lambda: any(r.session.session_id == "newer" and r.group == "done" for r in app.rows))
+        await until(
+            pilot,
+            lambda: any(
+                r.session.session_id == "newer" and r.group == "done" for r in app.rows
+            ),
+        )
         return first, paused, after_r, {r.session.session_id: r.group for r in app.rows}
 
-    first, paused, after_r, final = run_app(home, monkeypatch, steps, interval=0.2, use_llm=True)
+    first, paused, after_r, final = run_app(
+        home, monkeypatch, steps, interval=0.2, use_llm=True
+    )
     assert first == (True, ["error"], 1)  # startup run failed: paused
     calls_while_paused, groups, status = paused
     assert calls_while_paused == 1  # no model calls on auto ticks while paused
-    assert groups == {"aaa": "error", "new": "unclassified"}  # error kept; new one waits
+    assert groups == {
+        "aaa": "error",
+        "new": "unclassified",
+    }  # error kept; new one waits
     assert "paused" in status and "Press r" in status
     assert after_r == (False, {"done"})  # r retried everything and lifted the pause
     assert final["newer"] == "done"
@@ -211,7 +254,11 @@ def test_errors_pause_auto_classification_until_r_succeeds(tmp_path, monkeypatch
 
 def test_failed_r_keeps_classification_paused(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa"])
-    monkeypatch.setattr(classify_mod, "_run_claude", lambda p, m: (_ for _ in ()).throw(RuntimeError("offline")))
+    monkeypatch.setattr(
+        classify_mod,
+        "_run_claude",
+        lambda p, m: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
 
     async def steps(app, pilot):
         app.notify = lambda *a, **kw: None
@@ -252,7 +299,9 @@ def test_delete_during_a_scan_does_not_come_back(tmp_path, monkeypatch, trashed)
         app.notify = lambda *a, **kw: None
         await pilot.press("r")
         await until(pilot, started.is_set)
-        app.delete_sessions([next(r.session for r in app.rows if r.session.session_id == "bbb")])
+        app.delete_sessions(
+            [next(r.session for r in app.rows if r.session.session_id == "bbb")]
+        )
         release.set()
         await settle(app, pilot)
         return ids(app)
@@ -324,7 +373,6 @@ def test_refresh_interval_option(tmp_path, monkeypatch, capsys):
     assert "must be 0 (off) or at least 1" in err and "'soon' is not a number" in err
 
 
-
 def test_ui_failed_batch_shows_error_and_retries_on_refresh(tmp_path, monkeypatch):
     import cc_sessions_man.classify as classify_mod
 
@@ -332,9 +380,15 @@ def test_ui_failed_batch_shows_error_and_retries_on_refresh(tmp_path, monkeypatc
     attempts = []
 
     def flaky_run(prompt, model):
-        ids = [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+        ids = [
+            line.split('"')[1]
+            for line in prompt.splitlines()
+            if line.startswith("<session id=")
+        ]
         attempts.append(ids)
-        if "s0" in ids and sum("s0" in a for a in attempts) == 1:  # first try at s0's batch fails
+        if (
+            "s0" in ids and sum("s0" in a for a in attempts) == 1
+        ):  # first try at s0's batch fails
             raise RuntimeError("Not logged in · Please run /login\nmore detail")
         return [{"id": i, "label": "done", "pending": ""} for i in ids]
 

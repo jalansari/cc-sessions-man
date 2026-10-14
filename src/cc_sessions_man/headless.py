@@ -6,7 +6,9 @@ import signal
 import subprocess
 
 
-def claude_command(model: str, system_prompt: str, schema: dict, tools: str = "", *extra: str) -> list[str]:
+def claude_command(
+    model: str, system_prompt: str, schema: dict, tools: str = "", *extra: str
+) -> list[str]:
     """`claude -p` with nothing of the user's loaded: no hooks, settings, MCP servers or session file.
 
     `tools` names the only tools it can use ("" for none). Run it from an empty folder so no
@@ -15,15 +17,22 @@ def claude_command(model: str, system_prompt: str, schema: dict, tools: str = ""
     Glob on files in /tmp and in home); dropping the user's settings means none can widen that.
     """
     return [
-        "claude", "-p",
-        "--model", model,
+        "claude",
+        "-p",
+        "--model",
+        model,
         "--no-session-persistence",  # our calls never appear as sessions (or in later searches)
-        "--tools", tools,
+        "--tools",
+        tools,
         "--strict-mcp-config",
-        "--setting-sources", "",  # skip user/project hooks, permissions and other settings
-        "--output-format", "json",
-        "--system-prompt", system_prompt,
-        "--json-schema", json.dumps(schema),
+        "--setting-sources",
+        "",  # skip user/project hooks, permissions and other settings
+        "--output-format",
+        "json",
+        "--system-prompt",
+        system_prompt,
+        "--json-schema",
+        json.dumps(schema),
         *extra,
     ]
 
@@ -32,5 +41,5 @@ def stop(proc: subprocess.Popen, sig: int = signal.SIGTERM) -> None:
     """Stop a claude started with start_new_session=True, with the tools it ran (e.g. ripgrep)."""
     try:
         os.killpg(proc.pid, sig)
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError, PermissionError:
         pass  # already gone

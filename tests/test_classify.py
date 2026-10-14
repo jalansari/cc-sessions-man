@@ -44,9 +44,14 @@ def test_partition_splits_finished_sessions(tmp_path):
     cache.put(hit, "done", "")
     cache.put(sess("stale", ENDED, mtime=0.5), "done", "")  # transcript changed since
 
-    cached, todo = cache.partition([hit, stale, new, sess("run", RUNNING), sess("mid", MID_TASK)])
+    cached, todo = cache.partition(
+        [hit, stale, new, sess("run", RUNNING), sess("mid", MID_TASK)]
+    )
     assert set(cached) == {"hit"}
-    assert [s.session_id for s in todo] == ["stale", "new"]  # running/interrupted never go to the model
+    assert [s.session_id for s in todo] == [
+        "stale",
+        "new",
+    ]  # running/interrupted never go to the model
 
 
 def test_classify_sends_exactly_the_todo_list(tmp_path, monkeypatch):
@@ -56,7 +61,11 @@ def test_classify_sends_exactly_the_todo_list(tmp_path, monkeypatch):
     sent = []
 
     def fake_run(prompt, model):
-        ids = [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+        ids = [
+            line.split('"')[1]
+            for line in prompt.splitlines()
+            if line.startswith("<session id=")
+        ]
         sent.extend(ids)
         return [{"id": i, "label": "done", "pending": ""} for i in ids]
 
@@ -64,7 +73,14 @@ def test_classify_sends_exactly_the_todo_list(tmp_path, monkeypatch):
     todo = []
     for i in range(7):
         (tmp_path / f"s{i}.jsonl").write_text("{}\n")
-        todo.append(Session(session_id=f"s{i}", path=tmp_path / f"s{i}.jsonl", mtime=1.0, state=ENDED))
+        todo.append(
+            Session(
+                session_id=f"s{i}",
+                path=tmp_path / f"s{i}.jsonl",
+                mtime=1.0,
+                state=ENDED,
+            )
+        )
     cache = Cache(tmp_path / "labels.json")
     labels = classify_mod.classify(todo, cache, batch_size=3, jobs=2)
     assert sorted(sent) == sorted(labels) == [s.session_id for s in todo]
@@ -106,7 +122,9 @@ def test_save_does_not_resurrect_dropped_labels(tmp_path):
 def test_merge_keeps_the_label_for_the_newer_transcript(tmp_path):
     path = tmp_path / "labels.json"
     ui_cache = Cache(path)
-    ui_cache.put(sess("x", mtime=1.0), "decision", "")  # labelled before the session continued
+    ui_cache.put(
+        sess("x", mtime=1.0), "decision", ""
+    )  # labelled before the session continued
     cli_cache = Cache(path)
     cli_cache.put(sess("x", mtime=2.0), "done", "")  # CLI labelled the newer transcript
     cli_cache.save()
@@ -114,7 +132,9 @@ def test_merge_keeps_the_label_for_the_newer_transcript(tmp_path):
     ui_cache.reload()  # pressing r in the UI
     assert ui_cache.get(sess("x", mtime=2.0))["label"] == "done"
     ui_cache.save()
-    assert json.loads(path.read_text())["x"]["mtime"] == 2.0  # and a save doesn't undo it
+    assert (
+        json.loads(path.read_text())["x"]["mtime"] == 2.0
+    )  # and a save doesn't undo it
 
 
 def test_session_deleted_mid_batch_is_not_cached(tmp_path, monkeypatch):
@@ -128,7 +148,9 @@ def test_session_deleted_mid_batch_is_not_cached(tmp_path, monkeypatch):
         todo.append(Session(session_id=sid, path=p, mtime=1.0, state=ENDED))
 
     def run_then_user_deletes(prompt, model):
-        (tmp_path / "deleted.jsonl").unlink()  # trashed from the UI while claude was working
+        (
+            tmp_path / "deleted.jsonl"
+        ).unlink()  # trashed from the UI while claude was working
         return [{"id": s.session_id, "label": "done", "pending": ""} for s in todo]
 
     monkeypatch.setattr(classify_mod, "_run_claude", run_then_user_deletes)
@@ -146,7 +168,9 @@ def test_cache_file_that_is_not_an_object_starts_empty(tmp_path):
         path.write_text(junk)
         cache = Cache(path)
         assert cache.data == {}
-        cached, todo = cache.partition([Session(session_id="a", path=Path("a"), mtime=1.0, state=ENDED)])
+        cached, todo = cache.partition(
+            [Session(session_id="a", path=Path("a"), mtime=1.0, state=ENDED)]
+        )
         assert (cached, len(todo)) == ({}, 1)
 
 
@@ -181,10 +205,12 @@ def test_concurrent_saves_in_one_process_still_merge(tmp_path):
     caches = [Cache(path) for _ in range(4)]
     threads = []
     for n, c in enumerate(caches):
+
         def work(c=c, n=n):
             for i in range(50):
                 c.put(sess(f"{n}-{i}"), "done", "")
                 c.save()
+
         threads.append(threading.Thread(target=work))
     for t in threads:
         t.start()

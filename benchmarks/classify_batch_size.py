@@ -72,19 +72,25 @@ def run_config(sample: list[Session], batch_size: int, jobs: int, model: str) ->
         "wall_s": round(wall, 2),
         "first_result_s": round(first_result, 2) if first_result else None,
         "sessions_per_s": round(len(labels) / wall, 2) if wall else 0,
-        "mean_call_s": round(sum(call_times) / len(call_times), 2) if call_times else None,
+        "mean_call_s": (
+            round(sum(call_times) / len(call_times), 2) if call_times else None
+        ),
         "cost_usd": round(cost, 4),
         "labels": labels,
     }
 
 
-def agreement(a: dict[str, str], b: dict[str, str]) -> tuple[float | None, float | None]:
+def agreement(
+    a: dict[str, str], b: dict[str, str]
+) -> tuple[float | None, float | None]:
     """(exact label agreement, agreement on 'needs you' vs not) over sessions both labelled."""
     common = a.keys() & b.keys()
     if not common:
         return None, None
     exact = sum(a[k] == b[k] for k in common) / len(common)
-    needs = sum((a[k] in NEEDS_YOU) == (b[k] in NEEDS_YOU) for k in common) / len(common)
+    needs = sum((a[k] in NEEDS_YOU) == (b[k] in NEEDS_YOU) for k in common) / len(
+        common
+    )
     return round(exact, 3), round(needs, 3)
 
 
@@ -103,18 +109,46 @@ def pct(v):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--sample", type=positive_int, default=60, help="sessions to classify per run (default: 60)")
-    p.add_argument("--batch-sizes", type=positive_int, nargs="+", default=[1, 5, 10, 20, 40])
-    p.add_argument("--jobs", type=positive_int, nargs="+", default=[4, 8], help="parallel calls to try (default: 4 8)")
-    p.add_argument("--reference-jobs", type=positive_int, default=8, help="parallel calls for the batch-1 reference runs")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--sample",
+        type=positive_int,
+        default=60,
+        help="sessions to classify per run (default: 60)",
+    )
+    p.add_argument(
+        "--batch-sizes", type=positive_int, nargs="+", default=[1, 5, 10, 20, 40]
+    )
+    p.add_argument(
+        "--jobs",
+        type=positive_int,
+        nargs="+",
+        default=[4, 8],
+        help="parallel calls to try (default: 4 8)",
+    )
+    p.add_argument(
+        "--reference-jobs",
+        type=positive_int,
+        default=8,
+        help="parallel calls for the batch-1 reference runs",
+    )
     p.add_argument("--model", default="haiku")
-    p.add_argument("--seed", type=int, default=1, help="random seed for picking the sample")
-    p.add_argument("--no-reference", action="store_true", help="skip the batch-1 reference runs (speed only, no accuracy)")
+    p.add_argument(
+        "--seed", type=int, default=1, help="random seed for picking the sample"
+    )
+    p.add_argument(
+        "--no-reference",
+        action="store_true",
+        help="skip the batch-1 reference runs (speed only, no accuracy)",
+    )
     args = p.parse_args()
 
     sample = pick_sample(args.sample, args.seed)
-    print(f"Sample: {len(sample)} finished sessions (seed {args.seed}), model {args.model}\n")
+    print(
+        f"Sample: {len(sample)} finished sessions (seed {args.seed}), model {args.model}\n"
+    )
 
     ref = ref2 = None
     noise_exact = noise_needs = None
@@ -123,7 +157,9 @@ def main() -> None:
         ref = run_config(sample, 1, args.reference_jobs, args.model)
         ref2 = run_config(sample, 1, args.reference_jobs, args.model)
         noise_exact, noise_needs = agreement(ref["labels"], ref2["labels"])
-        print(f"  model noise: {pct(noise_exact)} exact, {pct(noise_needs)} needs-you agreement between two batch-1 runs\n")
+        print(
+            f"  model noise: {pct(noise_exact)} exact, {pct(noise_needs)} needs-you agreement between two batch-1 runs\n"
+        )
 
     runs = []
     for jobs in args.jobs:
@@ -134,12 +170,16 @@ def main() -> None:
                 print(f"Batch {bs:>3}, {jobs} parallel…", flush=True)
                 r = run_config(sample, bs, jobs, args.model)
             if ref:
-                r["agree_exact"], r["agree_needs_you"] = agreement(ref2["labels"] if r is ref else ref["labels"], r["labels"])
+                r["agree_exact"], r["agree_needs_you"] = agreement(
+                    ref2["labels"] if r is ref else ref["labels"], r["labels"]
+                )
             else:
                 r["agree_exact"] = r["agree_needs_you"] = None
             runs.append(r)
 
-    print("\n| Batch | Parallel | Calls | Wall | First result | Sessions/s | Mean call | Labelled | Agree (exact) | Agree (needs you) | Cost |")
+    print(
+        "\n| Batch | Parallel | Calls | Wall | First result | Sessions/s | Mean call | Labelled | Agree (exact) | Agree (needs you) | Cost |"
+    )
     print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in runs:
         print(
@@ -148,21 +188,32 @@ def main() -> None:
             f"| {pct(r['agree_exact'])} | {pct(r['agree_needs_you'])} | ${r['cost_usd']:.3f} |"
         )
     if ref:
-        print(f"\nBaseline noise (batch 1 vs batch 1): {pct(noise_exact)} exact, {pct(noise_needs)} needs-you.")
-        print("Agreement is against the batch-1 reference; the reference row is compared with its repeat run.")
+        print(
+            f"\nBaseline noise (batch 1 vs batch 1): {pct(noise_exact)} exact, {pct(noise_needs)} needs-you."
+        )
+        print(
+            "Agreement is against the batch-1 reference; the reference row is compared with its repeat run."
+        )
 
     RESULTS_DIR.mkdir(exist_ok=True)
     out = RESULTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.json"
-    out.write_text(json.dumps({
-        "date": datetime.now().isoformat(timespec="seconds"),
-        "model": args.model,
-        "sample_size": len(sample),
-        "seed": args.seed,
-        "reference": not args.no_reference,
-        "noise": {"exact": noise_exact, "needs_you": noise_needs},
-        "runs": [{k: v for k, v in r.items() if k != "labels"} for r in runs],
-    }, indent=2))
-    print(f"Saved {out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out}")
+    out.write_text(
+        json.dumps(
+            {
+                "date": datetime.now().isoformat(timespec="seconds"),
+                "model": args.model,
+                "sample_size": len(sample),
+                "seed": args.seed,
+                "reference": not args.no_reference,
+                "noise": {"exact": noise_exact, "needs_you": noise_needs},
+                "runs": [{k: v for k, v in r.items() if k != "labels"} for r in runs],
+            },
+            indent=2,
+        )
+    )
+    print(
+        f"Saved {out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out}"
+    )
 
 
 if __name__ == "__main__":

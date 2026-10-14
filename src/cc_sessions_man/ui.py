@@ -18,23 +18,33 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import CommandPalette, DiscoveryHit, Hit, Hits
+from textual.containers import Grid, Horizontal, Vertical
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.notifications import Notification, Notify
-from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .cli import CACHE_PATH, GROUPS, STATUS_RANK, add_common_args, add_search_args, detail_of, group_of, refresh_interval_arg, short_path
+from .cli import (
+    CACHE_PATH,
+    GROUPS,
+    STATUS_RANK,
+    add_common_args,
+    add_search_args,
+    detail_of,
+    group_of,
+    refresh_interval_arg,
+    short_path,
+)
 from .delete import trash_session
-from .move import move_session
 from .headless import stop
-from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
+from .move import move_session
 from .paths import Completer, problem_span, to_path
 from .rename import rename_session
 from .scan import Session, claude_env, live_sessions, parse_transcript, scan
+from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
 
 PENDING = {"decision", "action", "interrupted"}
 DEFAULT_REFRESH_INTERVAL = 30.0  # seconds between automatic refreshes; 0 turns them off
@@ -51,8 +61,13 @@ GROUP_STYLE = {
 }
 
 COLUMNS = [
-    ("status", "Status"), ("started", "Started"), ("last", "Last activity"),
-    ("title", "Title"), ("cwd", "Folder"), ("context", "Context"), ("model", "Model"),
+    ("status", "Status"),
+    ("started", "Started"),
+    ("last", "Last activity"),
+    ("title", "Title"),
+    ("cwd", "Folder"),
+    ("context", "Context"),
+    ("model", "Model"),
 ]
 
 # How each column sorts: key function and whether it runs descending by default.
@@ -63,7 +78,10 @@ SORT_KEYS = {
     "title": (lambda r: r.session.title.lower(), False),
     "cwd": (lambda r: r.session.cwd, False),
     "context": (lambda r: r.session.context_tokens, True),  # largest first
-    "model": (lambda r: (not r.session.model, short_model(r.session.model)), False),  # A to Z, blanks last
+    "model": (
+        lambda r: (not r.session.model, short_model(r.session.model)),
+        False,
+    ),  # A to Z, blanks last
 }
 
 # The orders the s key cycles through: (primary, secondary, tertiary).
@@ -84,8 +102,13 @@ def mark_room(key: str) -> int:
 
 
 COLUMN_NAMES = {
-    "status": "status", "started": "start", "last": "last activity", "title": "title", "cwd": "folder",
-    "context": "context size", "model": "model",
+    "status": "status",
+    "started": "start",
+    "last": "last activity",
+    "title": "title",
+    "cwd": "folder",
+    "context": "context size",
+    "model": "model",
 }
 TITLE_MAX = 50
 FOLDER_MAX = 40
@@ -93,7 +116,7 @@ FOLDER_MAX = 40
 
 def truncate_start(text: str, limit: int = FOLDER_MAX) -> str:
     """Keep the end of a path, which tells folders apart: "…/my-app/.claude/skills/x"."""
-    return text if len(text) <= limit else "…" + text[-(limit - 1):]
+    return text if len(text) <= limit else "…" + text[-(limit - 1) :]
 
 
 def truncate_words(text: str, limit: int = TITLE_MAX, marker: str = "...") -> str:
@@ -151,7 +174,9 @@ def short_model(model: str) -> str:
 
     Bedrock and Vertex IDs shorten the same way; anything else is capped at MODEL_MAX.
     """
-    return truncate_words(MODEL_SUFFIX.sub("", MODEL_PREFIX.sub("", model, count=1), count=1), MODEL_MAX)
+    return truncate_words(
+        MODEL_SUFFIX.sub("", MODEL_PREFIX.sub("", model, count=1), count=1), MODEL_MAX
+    )
 
 
 def local_time(ts: str) -> str:
@@ -159,7 +184,11 @@ def local_time(ts: str) -> str:
     if not ts:
         return ""
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+        return (
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            .astimezone()
+            .strftime("%Y-%m-%d %H:%M")
+        )
     except ValueError:
         return ts[:16]
 
@@ -245,7 +274,9 @@ class RenameSession(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rename-dialog"):
-            yield Label(f"Rename session {self.session.session_id[:8]}  (Enter = save, Esc = cancel)")
+            yield Label(
+                f"Rename session {self.session.session_id[:8]}  (Enter = save, Esc = cancel)"
+            )
             yield Input(value=self.session.title, id="new-title")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -277,7 +308,9 @@ class PathProblems(Highlighter):
 class PathInput(Input):
     """A folder path input: Tab fills in the next matching folder, bad parts show in red."""
 
-    BINDINGS = [Binding("tab", "complete", "Complete folder", show=False)]  # instead of moving focus
+    BINDINGS = [
+        Binding("tab", "complete", "Complete folder", show=False)
+    ]  # instead of moving focus
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, highlighter=PathProblems(), **kwargs)
@@ -290,7 +323,9 @@ class PathInput(Input):
             self.cursor_position = len(value)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.value != self.completer.filled:  # typed, not filled in by Tab: a new round
+        if (
+            event.value != self.completer.filled
+        ):  # typed, not filled in by Tab: a new round
             self.completer.reset()
 
 
@@ -313,8 +348,14 @@ class AskSearch(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="search-dialog"):
-            yield Label("AI search: Claude looks through every transcript  (Enter = search, Esc = cancel)")
-            yield Input(value=self.query_text, placeholder="e.g. session that created github repository MY-EXAMPLE-REPO", id="ai-query")
+            yield Label(
+                "AI search: Claude looks through every transcript  (Enter = search, Esc = cancel)"
+            )
+            yield Input(
+                value=self.query_text,
+                placeholder="e.g. session that created github repository MY-EXAMPLE-REPO",
+                id="ai-query",
+            )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         query = " ".join(event.value.split())
@@ -346,13 +387,20 @@ class MoveSession(ModalScreen[Path | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="move-dialog"):
-            yield Label(f"Move session {self.session.session_id[:8]} to folder  (Tab = complete, Enter = move, Esc = cancel)")
+            yield Label(
+                f"Move session {self.session.session_id[:8]} to folder  (Tab = complete, Enter = move, Esc = cancel)"
+            )
             yield PathInput(value=short_path(self.session.cwd), id="new-folder")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        dest = to_path(event.value)  # a bare name is in home, as for Tab and the red text
+        dest = to_path(
+            event.value
+        )  # a bare name is in home, as for Tab and the red text
         if not event.value.strip() or dest is None or not dest.is_dir():
-            self.notify(f"{event.value.strip() or 'That'} isn't an existing folder.", severity="warning")
+            self.notify(
+                f"{event.value.strip() or 'That'} isn't an existing folder.",
+                severity="warning",
+            )
             return
         self.dismiss(dest)
 
@@ -385,10 +433,16 @@ class ConfirmDelete(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         n = len(self.sessions)
         lines = [f"Move {n} session{'s' if n != 1 else ''} to the Trash?", ""]
-        lines += [f"  • {truncate_words(s.title or s.session_id, 60)}" for s in self.sessions[:10]]
+        lines += [
+            f"  • {truncate_words(s.title or s.session_id, 60)}"
+            for s in self.sessions[:10]
+        ]
         if n > 10:
             lines.append(f"  … and {n - 10} more")
-        lines += ["", "You can restore them from the Trash. y = delete, n / Esc = cancel"]
+        lines += [
+            "",
+            "You can restore them from the Trash. y = delete, n / Esc = cancel",
+        ]
         with Grid(id="dialog"):
             yield Label("\n".join(lines), id="question")
             yield Button("Delete", variant="error", id="yes")
@@ -409,6 +463,7 @@ def ignore_after_quit(method):
 
     Only a missing widget on a torn-down screen is ignored; any other NoMatches still raises.
     """
+
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         try:
@@ -416,6 +471,7 @@ def ignore_after_quit(method):
         except NoMatches:
             if self.widgets_present():
                 raise
+
     return wrapper
 
 
@@ -431,7 +487,9 @@ class SessionsApp(App[Session | None]):
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
         Binding(
-            "s", "cycle_sort", "Sort",
+            "s",
+            "cycle_sort",
+            "Sort",
             tooltip="Cycle the sort order:\n1) status, last activity\n2) last activity, status\n"
             "3) folder, status, last activity\n4) last activity, folder, status",
         ),
@@ -452,10 +510,15 @@ class SessionsApp(App[Session | None]):
     ]
 
     def __init__(
-        self, claude_home: Path, model: str, use_llm: bool,
-        batch_size: int = DEFAULT_BATCH_SIZE, jobs: int = DEFAULT_JOBS,
+        self,
+        claude_home: Path,
+        model: str,
+        use_llm: bool,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        jobs: int = DEFAULT_JOBS,
         refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
-        search_model: str = DEFAULT_SEARCH_MODEL, search_budget: float = DEFAULT_SEARCH_BUDGET,
+        search_model: str = DEFAULT_SEARCH_MODEL,
+        search_budget: float = DEFAULT_SEARCH_BUDGET,
     ):
         super().__init__()
         self.search_model = search_model
@@ -466,11 +529,17 @@ class SessionsApp(App[Session | None]):
         self.found_query = ""
         self.searching = ""  # the query of a search in progress
         self.search_proc = None  # its claude process, to stop it
-        self.search_token = 0  # bumped per search, so a stopped one's results are dropped
-        self.search_notice: Notification | None = None  # "Searching…", shown until it ends
+        self.search_token = (
+            0  # bumped per search, so a stopped one's results are dropped
+        )
+        self.search_notice: Notification | None = (
+            None  # "Searching…", shown until it ends
+        )
         # The worker records the process while the UI may be stopping the search: one at a time.
         self.search_lock = threading.Lock()
-        self.loaded = False  # the first scan has been shown: the session index is complete
+        self.loaded = (
+            False  # the first scan has been shown: the session index is complete
+        )
         self.refresh_interval = refresh_interval
         self.batch_size = batch_size
         self.jobs = jobs
@@ -488,19 +557,29 @@ class SessionsApp(App[Session | None]):
         # After a run hits a classification error, automatic refreshes stop calling the
         # model until a manual r completes a run without errors.
         self.classify_paused = False
-        self.failed: dict[str, dict] = {}  # in-memory "error" labels, shown until reclassified
+        self.failed: dict[str, dict] = (
+            {}
+        )  # in-memory "error" labels, shown until reclassified
         # Deletes and renames made while a load is scanning, applied to its (older) results.
         self.load_deleted: set[str] = set()
-        self.load_changed: dict[str, dict] = {}  # renames and moves, by session: Session fields
-        self.shown_signature = None  # what show() last rendered, to skip no-change refreshes
+        self.load_changed: dict[str, dict] = (
+            {}
+        )  # renames and moves, by session: Session fields
+        self.shown_signature = (
+            None  # what show() last rendered, to skip no-change refreshes
+        )
         self.error_notified = False  # shown the "classification failed" notice this run
 
     def compose(self) -> ComposeResult:
         yield TitleBar()
         with Horizontal(id="filters"):
-            options = [("All", "all"), ("Needs you", "pending")] + [(v, k) for k, v in GROUPS.items()]
+            options = [("All", "all"), ("Needs you", "pending")] + [
+                (v, k) for k, v in GROUPS.items()
+            ]
             yield Select(options, value="all", allow_blank=False, id="group")
-            yield Input(placeholder="Filter by title, folder or session ID  (/)", id="search")
+            yield Input(
+                placeholder="Filter by title, folder or session ID  (/)", id="search"
+            )
         yield SessionTable(cursor_type="row", zebra_stripes=True, id="table")
         yield Static(id="detail")
         yield Footer()
@@ -542,7 +621,11 @@ class SessionsApp(App[Session | None]):
         self.loading = False
         if outcome is not None:
             self.classify_paused = outcome
-        self.set_status("Classification paused after an error. Press r to retry." if self.classify_paused else "")
+        self.set_status(
+            "Classification paused after an error. Press r to retry."
+            if self.classify_paused
+            else ""
+        )
         if self.refresh_queued:
             self.refresh_queued = False
             self.cache.reload()
@@ -556,7 +639,9 @@ class SessionsApp(App[Session | None]):
         finally:
             self.call_from_thread(self.load_finished, outcome)
 
-    def _load(self, quiet: bool, classify_now: bool, failed: dict[str, dict]) -> bool | None:
+    def _load(
+        self, quiet: bool, classify_now: bool, failed: dict[str, dict]
+    ) -> bool | None:
         if not quiet:  # auto refreshes don't flash "Scanning…" every interval
             self.call_from_thread(self.set_status, "Scanning transcripts…")
         sessions = scan(self.claude_home)
@@ -564,27 +649,46 @@ class SessionsApp(App[Session | None]):
         cached, todo = self.cache.partition(sessions)
         send = todo if classify_now else []
         # Sessions not being sent keep any earlier "Classification failed" label.
-        labels = {**cached, **{s.session_id: failed[s.session_id] for s in todo if s.session_id in failed}}
+        labels = {
+            **cached,
+            **{
+                s.session_id: failed[s.session_id]
+                for s in todo
+                if s.session_id in failed
+            },
+        }
         # Show the list straight away; unclassified rows fill in as batches come back.
         # The classifying set is handed to the main thread with it, which owns that state.
         self.call_from_thread(self.show, sessions, labels, {s.session_id for s in send})
         if not send:
             return None
-        self.call_from_thread(self.set_status, f"Classifying 0/{len(send)} with {self.model}…")
+        self.call_from_thread(
+            self.set_status, f"Classifying 0/{len(send)} with {self.model}…"
+        )
         errors = []
 
-        def on_batch(new: dict[str, dict], batch: list[Session], err: Exception | None) -> None:
+        def on_batch(
+            new: dict[str, dict], batch: list[Session], err: Exception | None
+        ) -> None:
             if err:
                 errors.append(err)
                 new = {**new, **error_labels(batch, err, skip=new)}
-            self.call_from_thread(self.apply_batch, new, [s.session_id for s in batch], len(send), err)
+            self.call_from_thread(
+                self.apply_batch, new, [s.session_id for s in batch], len(send), err
+            )
 
-        classify(send, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch)
+        classify(
+            send, self.cache, self.model, self.batch_size, self.jobs, on_batch=on_batch
+        )
         return bool(errors)
 
     @ignore_after_quit  # called from the load worker, which can finish after quitting
     def apply_batch(
-        self, new: dict[str, dict], batch_ids: list[str], total: int, err: Exception | None = None
+        self,
+        new: dict[str, dict],
+        batch_ids: list[str],
+        total: int,
+        err: Exception | None = None,
     ) -> None:
         for r in self.rows:
             if r.session.session_id in new:
@@ -599,10 +703,14 @@ class SessionsApp(App[Session | None]):
             msg = next(iter(new.values()))["pending"] if new else str(err)
             self.notify(
                 f"{msg}\nAuto-refresh won't classify until it works again. Press r to retry.",
-                title="Classification failed", severity="error", timeout=10,
+                title="Classification failed",
+                severity="error",
+                timeout=10,
             )
         self.classifying -= set(batch_ids)
-        self.set_status(f"Classifying {total - len(self.classifying)}/{total} with {self.model}…")
+        self.set_status(
+            f"Classifying {total - len(self.classifying)}/{total} with {self.model}…"
+        )
         self.render_table()
 
     @ignore_after_quit  # called from the load worker, which can finish after quitting
@@ -616,16 +724,25 @@ class SessionsApp(App[Session | None]):
             left.append(f"  —  {self.sub_title}", style="dim")
         if self.searching:
             left.append(f"  —  AI search “{self.searching}”…", style="dim")
-        self.query_one(TitleBar).show(left, f"{len(self.marked)} marked" if self.marked else "")
+        self.query_one(TitleBar).show(
+            left, f"{len(self.marked)} marked" if self.marked else ""
+        )
 
     @ignore_after_quit  # called from the load worker, which can finish after quitting
-    def show(self, sessions: list[Session], labels: dict[str, dict], classifying: set[str] | None = None) -> None:
+    def show(
+        self,
+        sessions: list[Session],
+        labels: dict[str, dict],
+        classifying: set[str] | None = None,
+    ) -> None:
         # The scan may predate a delete, rename or move made while it ran: re-apply those.
         # A scan during a move can see the transcript in both folders; keep one.
         seen = set()
         sessions = [
-            s for s in sessions
-            if s.session_id not in self.load_deleted and not (s.session_id in seen or seen.add(s.session_id))
+            s
+            for s in sessions
+            if s.session_id not in self.load_deleted
+            and not (s.session_id in seen or seen.add(s.session_id))
         ]
         for s in sessions:
             for field, value in self.load_changed.get(s.session_id, {}).items():
@@ -637,15 +754,27 @@ class SessionsApp(App[Session | None]):
         old_paths = {r.session.session_id: r.session.path for r in self.rows}
         found = {s.session_id for s in sessions}
         self.marked = {
-            sid for sid in self.marked
+            sid
+            for sid in self.marked
             if sid in found or (sid in old_paths and old_paths[sid].exists())
         }
         self.rows = [Row(s, labels) for s in sessions]
         self.loaded = True
         signature = (
-            tuple((r.session.session_id, r.session.mtime, r.session.state, r.session.live_status,
-                   r.session.title, r.group, r.detail) for r in self.rows),
-            frozenset(self.classifying), frozenset(self.marked),
+            tuple(
+                (
+                    r.session.session_id,
+                    r.session.mtime,
+                    r.session.state,
+                    r.session.live_status,
+                    r.session.title,
+                    r.group,
+                    r.detail,
+                )
+                for r in self.rows
+            ),
+            frozenset(self.classifying),
+            frozenset(self.marked),
         )
         if signature == self.shown_signature:
             return  # nothing changed: don't rebuild (and jump) the table
@@ -671,7 +800,9 @@ class SessionsApp(App[Session | None]):
             out.append(r)
         if self.sort_keys == ("relevance",):  # AI search results: the model's order
             found = self.found or {}
-            return sorted(out, key=lambda r: found.get(r.session.session_id, (len(found), ""))[0])
+            return sorted(
+                out, key=lambda r: found.get(r.session.session_id, (len(found), ""))[0]
+            )
         # Stable sorts, least significant first, so each key orders ties in the one before.
         for i, name in reversed(list(enumerate(self.sort_keys))):
             out.sort(key=SORT_KEYS[name][0], reverse=self.descending(i))
@@ -694,12 +825,21 @@ class SessionsApp(App[Session | None]):
         measures the cells once it's idle, so quick header clicks showed squashed frames.
         """
         for n, (key, label) in enumerate(COLUMNS):
-            width = max([cell_len(label) + mark_room(key), *(cell_len(str(row[n])) for row in cells)])
+            width = max(
+                [
+                    cell_len(label) + mark_room(key),
+                    *(cell_len(str(row[n])) for row in cells),
+                ]
+            )
             if key in self.sort_keys:
                 i = self.sort_keys.index(key)
                 mark = "v" if self.descending(i) else "^"
                 label = f"{label} {mark}{i + 1 if len(self.sort_keys) > 1 else ''}"
-            table.add_column(Text(label, justify="right") if key in RIGHT_ALIGNED else label, key=key, width=width)
+            table.add_column(
+                Text(label, justify="right") if key in RIGHT_ALIGNED else label,
+                key=key,
+                width=width,
+            )
 
     def row_cells(self, r: Row) -> tuple:
         """One table row's cells, in COLUMNS order.
@@ -717,7 +857,11 @@ class SessionsApp(App[Session | None]):
             Text(local_time(s.last_timestamp)),
             Text(truncate_words(s.title)),
             Text(truncate_start(short_path(s.cwd))),
-            Text(format_tokens(s.context_tokens), style=context_style(s.context_tokens), justify="right"),
+            Text(
+                format_tokens(s.context_tokens),
+                style=context_style(s.context_tokens),
+                justify="right",
+            ),
             Text(short_model(s.model)),
         )
 
@@ -730,24 +874,37 @@ class SessionsApp(App[Session | None]):
         rows = self.visible_rows()
         # Every session's cells, so column widths don't depend on the search or group filter.
         cells = {r.session.session_id: self.row_cells(r) for r in self.rows}
-        table.clear(columns=True)  # re-add columns so the headings show the current sort
+        table.clear(
+            columns=True
+        )  # re-add columns so the headings show the current sort
         self.add_columns(table, list(cells.values()))
         for r in rows:
             table.add_row(*cells[r.session.session_id], key=r.session.session_id)
         if selected:
             index = next(
-                (i for i, r in enumerate(rows) if r.session.session_id == selected.session.session_id), None
+                (
+                    i
+                    for i, r in enumerate(rows)
+                    if r.session.session_id == selected.session.session_id
+                ),
+                None,
             )
             if index is not None:
                 # clear() reset the scroll; restore it so the row keeps its place on screen
                 # instead of being scrolled just into view at the bottom edge.
                 table.move_cursor(row=index, scroll=False)
-                table.scroll_to(y=max(0, index - screen_offset), animate=False, immediate=True)
-        table.scroll_to(x=scroll_x, animate=False, immediate=True)  # and don't jump sideways
+                table.scroll_to(
+                    y=max(0, index - screen_offset), animate=False, immediate=True
+                )
+        table.scroll_to(
+            x=scroll_x, animate=False, immediate=True
+        )  # and don't jump sideways
         counts = {g: sum(r.group == g for r in self.rows) for g in GROUPS}
         # self.title also sets the terminal window title.
         self.title = f"Claude Code sessions: {len(rows)} shown, " + ", ".join(
-            f"{GROUPS[g].lower()} {n}" for g, n in counts.items() if n and g in PENDING | {"running", "error"}
+            f"{GROUPS[g].lower()} {n}"
+            for g, n in counts.items()
+            if n and g in PENDING | {"running", "error"}
         )
         if self.found is not None:
             self.title = f"AI search “{self.found_query}”: {len(self.found)} found, {len(rows)} shown  (a = show all)"
@@ -794,7 +951,9 @@ class SessionsApp(App[Session | None]):
     def widgets_present(self) -> bool:
         """Whether the main screen still has every widget the callbacks use (False while quitting)."""
         main = self.screen_stack[0] if self.screen_stack else None
-        return bool(main) and all(main.query(w) for w in (DataTable, TitleBar, "#detail", "#group", "#search"))
+        return bool(main) and all(
+            main.query(w) for w in (DataTable, TitleBar, "#detail", "#group", "#search")
+        )
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col = event.column_key.value
@@ -821,14 +980,17 @@ class SessionsApp(App[Session | None]):
         if r is None:
             return
         if r.group == "running":
-            self.notify("That session is still open in another terminal.", severity="warning")
+            self.notify(
+                "That session is still open in another terminal.", severity="warning"
+            )
             return
         if not r.session.cwd or not os.path.isdir(r.session.cwd):
             # claude --resume looks the session up by folder; from anywhere else it either
             # can't find it or resumes in the wrong working tree.
             self.notify(
                 f"Its folder {short_path(r.session.cwd) or '(unknown)'} no longer exists, so it can't be resumed.",
-                title="Can't resume", severity="error",
+                title="Can't resume",
+                severity="error",
             )
             return
         self.exit(r.session)
@@ -841,7 +1003,9 @@ class SessionsApp(App[Session | None]):
         table = self.query_one(DataTable)
         row = table.cursor_row
         self.render_table()
-        table.move_cursor(row=min(row + 1, table.row_count - 1))  # step down, like a file manager
+        table.move_cursor(
+            row=min(row + 1, table.row_count - 1)
+        )  # step down, like a file manager
 
     def action_unmark_all(self) -> None:
         """Unmark everything. Never marks: "u to be safe" must not set up a delete."""
@@ -861,7 +1025,9 @@ class SessionsApp(App[Session | None]):
         if r is None:
             return
         if r.session.session_id in live_sessions(self.claude_home):
-            self.notify("That session is still open; use /rename in it.", severity="warning")
+            self.notify(
+                "That session is still open; use /rename in it.", severity="warning"
+            )
             return
 
         def done(title: str | None) -> None:
@@ -888,13 +1054,17 @@ class SessionsApp(App[Session | None]):
         except OSError:
             # Gone between the rename and now (e.g. Claude Code cleanup). The next scan drops it.
             self.render_table()
-            self.notify("Renamed, but the transcript has since disappeared.", severity="warning")
+            self.notify(
+                "Renamed, but the transcript has since disappeared.", severity="warning"
+            )
             return
         if label:
             self.cache.put(s, label["label"], label["pending"])
             self.cache.save()
         # In case a scan in progress has the old title.
-        self.load_changed.setdefault(s.session_id, {}).update(title=title, mtime=s.mtime)
+        self.load_changed.setdefault(s.session_id, {}).update(
+            title=title, mtime=s.mtime
+        )
         self.render_table()
         self.notify(f"Renamed to “{title}”.")
 
@@ -903,7 +1073,9 @@ class SessionsApp(App[Session | None]):
         if r is None:
             return
         if r.session.session_id in live_sessions(self.claude_home):
-            self.notify("That session is still open; exit it first.", severity="warning")
+            self.notify(
+                "That session is still open; exit it first.", severity="warning"
+            )
             return
 
         def done(dest: Path | None) -> None:
@@ -914,7 +1086,9 @@ class SessionsApp(App[Session | None]):
 
     def apply_move(self, r: Row, dest: Path) -> None:
         # An auto-refresh while the dialog was open replaces the rows: use the current one.
-        r = next((x for x in self.rows if x.session.session_id == r.session.session_id), r)
+        r = next(
+            (x for x in self.rows if x.session.session_id == r.session.session_id), r
+        )
         s = r.session
         label = self.cache.get(s)
         try:
@@ -926,31 +1100,45 @@ class SessionsApp(App[Session | None]):
             moved = parse_transcript(path)
         except OSError:
             moved = None
-        if moved is None:  # gone since (e.g. Claude Code cleanup): the next scan drops it
+        if (
+            moved is None
+        ):  # gone since (e.g. Claude Code cleanup): the next scan drops it
             self.render_table()
-            self.notify("Moved, but the transcript has since disappeared.", severity="warning")
+            self.notify(
+                "Moved, but the transcript has since disappeared.", severity="warning"
+            )
             return
         s.path, s.cwd, s.mtime = moved.path, moved.cwd, moved.mtime
         # Only working folders changed, so the label still fits: carry it to the new mtime.
         if label:
             self.cache.put(s, label["label"], label["pending"])
             self.cache.save()
-        self.load_changed.setdefault(s.session_id, {}).update(path=s.path, cwd=s.cwd, mtime=s.mtime)
+        self.load_changed.setdefault(s.session_id, {}).update(
+            path=s.path, cwd=s.cwd, mtime=s.mtime
+        )
         self.render_table()
         # Memory belongs to a folder, shared by its sessions, so it isn't moved: say which one applies.
-        self.notify(f"Moved to {short_path(s.cwd)}. Resuming it now runs there and uses that folder's memory.")
+        self.notify(
+            f"Moved to {short_path(s.cwd)}. Resuming it now runs there and uses that folder's memory."
+        )
 
     def action_delete(self) -> None:
         if self.marked:
-            targets = [r.session for r in self.rows if r.session.session_id in self.marked]
+            targets = [
+                r.session for r in self.rows if r.session.session_id in self.marked
+            ]
         else:
             r = self.current_row()
             targets = [r.session] if r else []
-        live = live_sessions(self.claude_home)  # re-check: one may have been resumed since the scan
+        live = live_sessions(
+            self.claude_home
+        )  # re-check: one may have been resumed since the scan
         running = [s for s in targets if s.session_id in live]
         targets = [s for s in targets if s.session_id not in live]
         if running:
-            self.notify(f"Skipping {len(running)} running session(s).", severity="warning")
+            self.notify(
+                f"Skipping {len(running)} running session(s).", severity="warning"
+            )
         if not targets:
             return
 
@@ -985,7 +1173,12 @@ class SessionsApp(App[Session | None]):
         for msg in failed:
             self.notify(msg, title="Delete failed", severity="error")
         for msg in leftovers:
-            self.notify(msg, title="Deleted, but some files were left behind", severity="warning", timeout=10)
+            self.notify(
+                msg,
+                title="Deleted, but some files were left behind",
+                severity="warning",
+                timeout=10,
+            )
 
     def action_toggle_keys(self) -> None:
         """k: show or hide Textual's keys panel (the same one as Ctrl+P > Keys)."""
@@ -1032,11 +1225,18 @@ class SessionsApp(App[Session | None]):
     def action_ai_search(self) -> None:
         """f: ask Claude to search the transcripts. Only one search runs at a time."""
         if self.searching:
-            self.notify(f"Still searching for “{self.searching}”. Wait for it to finish, or press a to stop it.",
-                        severity="warning", markup=False)
+            self.notify(
+                f"Still searching for “{self.searching}”. Wait for it to finish, or press a to stop it.",
+                severity="warning",
+                markup=False,
+            )
             return
-        if not self.loaded:  # the index would be empty, and every match dropped as unknown
-            self.notify("Still loading the sessions; try again in a moment.", severity="warning")
+        if (
+            not self.loaded
+        ):  # the index would be empty, and every match dropped as unknown
+            self.notify(
+                "Still loading the sessions; try again in a moment.", severity="warning"
+            )
             return
 
         def done(query: str | None) -> None:
@@ -1053,8 +1253,11 @@ class SessionsApp(App[Session | None]):
         self.update_title_bar()
         # Textual's notify() doesn't return the notification, so make our own to remove later.
         self.search_notice = Notification(
-            f"Searching the transcripts for “{query}”…", "AI search", "information",
-            timeout=SEARCH_TIMEOUT + 30, markup=False,  # outlasts the search; removed when it ends
+            f"Searching the transcripts for “{query}”…",
+            "AI search",
+            "information",
+            timeout=SEARCH_TIMEOUT + 30,
+            markup=False,  # outlasts the search; removed when it ends
         )
         self.post_message(Notify(self.search_notice))
         self.run_search(token, query, [r.session for r in self.rows])
@@ -1071,7 +1274,7 @@ class SessionsApp(App[Session | None]):
         try:
             if notice in self._notifications:
                 self._unnotify(notice)
-        except (AttributeError, KeyError, TypeError):
+        except AttributeError, KeyError, TypeError:
             pass
 
     @work(thread=True, group="search")
@@ -1084,9 +1287,18 @@ class SessionsApp(App[Session | None]):
             stop(proc)  # stopped before claude even started
 
         try:
-            result = search(sessions, query, self.search_model, self.claude_home, self.search_budget, started)
+            result = search(
+                sessions,
+                query,
+                self.search_model,
+                self.claude_home,
+                self.search_budget,
+                started,
+            )
         except Exception as exc:  # including claude killed by something else: report it
-            self.call_from_thread(self.search_failed, token, exc)  # ignored if we stopped it
+            self.call_from_thread(
+                self.search_failed, token, exc
+            )  # ignored if we stopped it
             return
         self.call_from_thread(self.search_done, token, query, result)
 
@@ -1139,7 +1351,13 @@ class SessionsApp(App[Session | None]):
         self.searching = ""
         self.hide_search_notice()
         self.update_title_bar()
-        self.notify(str(exc), title="AI search failed", severity="error", timeout=10, markup=False)
+        self.notify(
+            str(exc),
+            title="AI search failed",
+            severity="error",
+            timeout=10,
+            markup=False,
+        )
 
     def on_unmount(self) -> None:
         # Don't leave claude running after quitting. The widgets are gone by now: touch none.
@@ -1150,7 +1368,11 @@ class SessionsApp(App[Session | None]):
 
     def search_themes(self) -> None:
         """The command palette's "Theme" entry, with the current theme marked."""
-        self.push_screen(CommandPalette(providers=[MarkedThemeProvider], placeholder="Search for themes…"))
+        self.push_screen(
+            CommandPalette(
+                providers=[MarkedThemeProvider], placeholder="Search for themes…"
+            )
+        )
 
     def action_focus_table(self) -> None:
         self.query_one(DataTable).focus()
@@ -1161,19 +1383,31 @@ def main(argv=None) -> int:
     add_common_args(p)
     add_search_args(p)
     p.add_argument(
-        "--refresh-interval", type=refresh_interval_arg, default=DEFAULT_REFRESH_INTERVAL, metavar="SECONDS",
+        "--refresh-interval",
+        type=refresh_interval_arg,
+        default=DEFAULT_REFRESH_INTERVAL,
+        metavar="SECONDS",
         help=f"refresh the list automatically every SECONDS, at least 1 (default: {DEFAULT_REFRESH_INTERVAL:g}; 0 turns it off)",
     )
     args = p.parse_args(argv)
 
     session = SessionsApp(
-        args.claude_home, args.model, not args.no_llm, args.batch_size, args.jobs, args.refresh_interval,
-        args.search_model, args.search_budget,
+        args.claude_home,
+        args.model,
+        not args.no_llm,
+        args.batch_size,
+        args.jobs,
+        args.refresh_interval,
+        args.search_model,
+        args.search_budget,
     ).run()
     if session is None:
         return 0
     if not session.cwd or not os.path.isdir(session.cwd):
-        print(f"Can't resume {session.session_id}: its folder {session.cwd or '(unknown)'} no longer exists.", file=sys.stderr)
+        print(
+            f"Can't resume {session.session_id}: its folder {session.cwd or '(unknown)'} no longer exists.",
+            file=sys.stderr,
+        )
         return 1
     claude = shutil.which("claude")
     if not claude:
@@ -1181,7 +1415,9 @@ def main(argv=None) -> int:
         return 1
     os.chdir(session.cwd)
     print(f"Resuming {session.session_id} in {short_path(os.getcwd())}…")
-    os.execve(claude, [claude, "--resume", session.session_id], claude_env(args.claude_home))
+    os.execve(
+        claude, [claude, "--resume", session.session_id], claude_env(args.claude_home)
+    )
 
 
 if __name__ == "__main__":

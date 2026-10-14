@@ -25,7 +25,10 @@ SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": {"session_id": {"type": "string"}, "reason": {"type": "string"}},
+                "properties": {
+                    "session_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
                 "required": ["session_id", "reason"],
             },
         },
@@ -55,7 +58,9 @@ class Match:
 @dataclass
 class SearchResult:
     matches: list[Match]
-    unknown: list[str] = field(default_factory=list)  # IDs the model returned that weren't searched
+    unknown: list[str] = field(
+        default_factory=list
+    )  # IDs the model returned that weren't searched
     cost_usd: float = 0.0
 
 
@@ -72,23 +77,39 @@ def build_prompt(sessions: list[Session], query: str) -> str:
     return f"Query: {query}\n\nIndex of sessions (id | started | last activity | folder | title):\n{index}"
 
 
-def call_claude(prompt: str, model: str, projects: Path, budget: float,
-                on_start: Callable[[subprocess.Popen], None] | None = None) -> dict:
+def call_claude(
+    prompt: str,
+    model: str,
+    projects: Path,
+    budget: float,
+    on_start: Callable[[subprocess.Popen], None] | None = None,
+) -> dict:
     """One headless search call with read-only tools over `projects`. Returns claude's JSON result.
 
     `on_start` gets the process as soon as it starts, so the caller can terminate it.
     """
     cmd = claude_command(
-        model, SYSTEM_PROMPT.format(projects=projects, max_matches=MAX_MATCHES), SCHEMA,
+        model,
+        SYSTEM_PROMPT.format(projects=projects, max_matches=MAX_MATCHES),
+        SCHEMA,
         "Read,Grep,Glob",  # read-only: it can look, never change anything
-        "--add-dir", str(projects),  # the only folder those tools can reach
-        "--max-budget-usd", str(budget),
+        "--add-dir",
+        str(projects),  # the only folder those tools can reach
+        "--max-budget-usd",
+        str(budget),
     )
     # Run from an empty dir: no project CLAUDE.md, and nothing else for the tools to reach.
     # Its own process group, so stopping it also stops the ripgrep its Grep runs.
     with tempfile.TemporaryDirectory() as cwd:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, cwd=cwd, start_new_session=True)
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+            start_new_session=True,
+        )
         if on_start:
             on_start(proc)
         try:
@@ -96,25 +117,42 @@ def call_claude(prompt: str, model: str, projects: Path, budget: float,
         except subprocess.TimeoutExpired:
             stop(proc, signal.SIGKILL)
             proc.communicate()
-            raise RuntimeError(f"The search took longer than {SEARCH_TIMEOUT // 60} minutes and was stopped.")
+            raise RuntimeError(
+                f"The search took longer than {SEARCH_TIMEOUT // 60} minutes and was stopped."
+            )
     if proc.returncode < 0:
-        raise SearchStopped(f"claude was stopped (signal {-proc.returncode}) before it finished.")
+        raise SearchStopped(
+            f"claude was stopped (signal {-proc.returncode}) before it finished."
+        )
     try:
         out = json.loads(stdout)
     except ValueError:
-        raise RuntimeError(stderr.strip() or stdout.strip() or f"claude exited with code {proc.returncode}")
+        raise RuntimeError(
+            stderr.strip()
+            or stdout.strip()
+            or f"claude exited with code {proc.returncode}"
+        )
     if out.get("subtype") == "error_max_budget_usd":
         raise RuntimeError(
             f"The search reached its ${budget:g} budget (spent ${out.get('total_cost_usd', 0):.2f}) before "
             "finishing. Try a more specific query, or raise the budget with --search-budget."
         )
     if out.get("is_error") or proc.returncode != 0:
-        raise RuntimeError(out.get("result") or stderr.strip() or f"claude stopped early ({out.get('subtype')})")
+        raise RuntimeError(
+            out.get("result")
+            or stderr.strip()
+            or f"claude stopped early ({out.get('subtype')})"
+        )
     return out
 
 
-def _run_search(prompt: str, model: str, projects: Path, budget: float,
-                on_start: Callable[[subprocess.Popen], None] | None = None) -> tuple[list[dict], float]:
+def _run_search(
+    prompt: str,
+    model: str,
+    projects: Path,
+    budget: float,
+    on_start: Callable[[subprocess.Popen], None] | None = None,
+) -> tuple[list[dict], float]:
     """The model's matches and the call's cost. Tests replace this."""
     out = call_claude(prompt, model, projects, budget, on_start)
     data = out.get("structured_output")
@@ -123,9 +161,14 @@ def _run_search(prompt: str, model: str, projects: Path, budget: float,
     return data["matches"], float(out.get("total_cost_usd") or 0)
 
 
-def search(sessions: list[Session], query: str, model: str = DEFAULT_SEARCH_MODEL, home: Path = CLAUDE_HOME,
-           budget: float = DEFAULT_SEARCH_BUDGET,
-           on_start: Callable[[subprocess.Popen], None] | None = None) -> SearchResult:
+def search(
+    sessions: list[Session],
+    query: str,
+    model: str = DEFAULT_SEARCH_MODEL,
+    home: Path = CLAUDE_HOME,
+    budget: float = DEFAULT_SEARCH_BUDGET,
+    on_start: Callable[[subprocess.Popen], None] | None = None,
+) -> SearchResult:
     """Ask claude which of `sessions` match `query`, most relevant first.
 
     IDs that aren't among `sessions` are dropped (and listed in `unknown`), as are repeats.
@@ -133,12 +176,16 @@ def search(sessions: list[Session], query: str, model: str = DEFAULT_SEARCH_MODE
     query = " ".join(query.split())
     if not query:
         raise ValueError("the search is empty")
-    raw, cost = _run_search(build_prompt(sessions, query), model, home / "projects", budget, on_start)
+    raw, cost = _run_search(
+        build_prompt(sessions, query), model, home / "projects", budget, on_start
+    )
     known = {s.session_id for s in sessions}
     result = SearchResult([], cost_usd=cost)
     seen = set()
     for item in raw:
-        if not isinstance(item, dict) or not isinstance(sid := item.get("session_id"), str):
+        if not isinstance(item, dict) or not isinstance(
+            sid := item.get("session_id"), str
+        ):
             continue
         sid = sid.strip().removesuffix(".jsonl")
         if sid not in known:
@@ -146,5 +193,7 @@ def search(sessions: list[Session], query: str, model: str = DEFAULT_SEARCH_MODE
         elif sid not in seen:
             seen.add(sid)
             reason = item.get("reason")
-            result.matches.append(Match(sid, " ".join(reason.split()) if isinstance(reason, str) else ""))
+            result.matches.append(
+                Match(sid, " ".join(reason.split()) if isinstance(reason, str) else "")
+            )
     return result

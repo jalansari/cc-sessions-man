@@ -16,7 +16,7 @@ def _java_hash(text: str) -> int:
     h = 0
     units = text.encode("utf-16-le")
     for i in range(0, len(units), 2):
-        h = (h * 31 + int.from_bytes(units[i:i + 2], "little")) & 0xFFFFFFFF
+        h = (h * 31 + int.from_bytes(units[i : i + 2], "little")) & 0xFFFFFFFF
     return h - (1 << 32) if h >= 1 << 31 else h
 
 
@@ -37,7 +37,8 @@ def project_dir_name(path: str) -> str:
     unit, as in JavaScript), and names over 200 characters are cut and given a hash suffix.
     """
     name = "".join(
-        c if c.isascii() and c.isalnum() else "-" * (2 if ord(c) > 0xFFFF else 1) for c in path
+        c if c.isascii() and c.isalnum() else "-" * (2 if ord(c) > 0xFFFF else 1)
+        for c in path
     )
     if len(name) <= PROJECT_NAME_MAX:
         return name
@@ -49,7 +50,10 @@ def _launch_dir(cwds: list[str], project_name: str) -> str | None:
 
     Later entries can record subfolders the session changed into. Falls back to the first.
     """
-    return next((c for c in cwds if project_dir_name(c) == project_name), cwds[0] if cwds else None)
+    return next(
+        (c for c in cwds if project_dir_name(c) == project_name),
+        cwds[0] if cwds else None,
+    )
 
 
 def _encode(entry: dict) -> bytes:
@@ -59,7 +63,10 @@ def _encode(entry: dict) -> bytes:
     so such a line keeps its non-ASCII characters escaped instead; it parses the same.
     """
     try:
-        return json.dumps(entry, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
+        return (
+            json.dumps(entry, ensure_ascii=False, separators=(",", ":")).encode()
+            + b"\n"
+        )
     except UnicodeEncodeError:
         return json.dumps(entry, separators=(",", ":")).encode() + b"\n"
 
@@ -74,13 +81,17 @@ def _fsync_dir(path: Path) -> None:
 
 def _write_temp(target: Path, lines: list[bytes]) -> Path:
     """Write `lines` to a new temporary file next to `target`, flushed to disk."""
-    with tempfile.NamedTemporaryFile("wb", dir=target.parent, prefix=target.name, suffix=".tmp", delete=False) as fh:
+    with tempfile.NamedTemporaryFile(
+        "wb", dir=target.parent, prefix=target.name, suffix=".tmp", delete=False
+    ) as fh:
         try:
             fh.writelines(lines)
             fh.flush()
             os.fsync(fh.fileno())
         except BaseException:
-            Path(fh.name).unlink(missing_ok=True)  # e.g. disk full: don't leave a partial copy
+            Path(fh.name).unlink(
+                missing_ok=True
+            )  # e.g. disk full: don't leave a partial copy
             raise
     return Path(fh.name)
 
@@ -113,12 +124,16 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
         except ValueError:
             e = None
         entries.append(e if isinstance(e, dict) else None)
-    cwds = [e["cwd"] for e in entries if e and isinstance(e.get("cwd"), str) and e["cwd"]]
+    cwds = [
+        e["cwd"] for e in entries if e and isinstance(e.get("cwd"), str) and e["cwd"]
+    ]
     root = _launch_dir(cwds, s.path.parent.name)
 
     def moved(cwd: str) -> str:
         if Path(cwd).is_relative_to(dest) and Path(cwd).is_dir():
-            return cwd  # already in dest, e.g. moving /repo to /repo/sub keeps /repo/sub/x
+            return (
+                cwd  # already in dest, e.g. moving /repo to /repo/sub keeps /repo/sub/x
+            )
         if root and Path(cwd).is_relative_to(root) and cwd != root:
             sub = dest / Path(cwd).relative_to(root)
             if sub.is_dir():
@@ -127,7 +142,12 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
 
     out = []
     for line, e in zip(lines, entries):
-        if e and isinstance(e.get("cwd"), str) and e["cwd"] and (new := moved(e["cwd"])) != e["cwd"]:
+        if (
+            e
+            and isinstance(e.get("cwd"), str)
+            and e["cwd"]
+            and (new := moved(e["cwd"])) != e["cwd"]
+        ):
             e["cwd"] = new
             line = _encode(e)  # untouched lines stay byte for byte
         out.append(line)
@@ -147,9 +167,13 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
     try:
         # A session resumed elsewhere since the read would lose what it appended.
         now = s.path.stat()
-        if (now.st_size, now.st_mtime_ns) != (read_stat.st_size, read_stat.st_mtime_ns) or \
-                s.session_id in live_sessions(home):
-            raise ValueError(f"session {s.session_id} changed during the move; nothing was moved")
+        if (now.st_size, now.st_mtime_ns) != (
+            read_stat.st_size,
+            read_stat.st_mtime_ns,
+        ) or s.session_id in live_sessions(home):
+            raise ValueError(
+                f"session {s.session_id} changed during the move; nothing was moved"
+            )
         os.replace(temp, target)
         if not in_place:
             done.append(lambda: os.unlink(target))
@@ -157,7 +181,9 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
                 # A rename, never a copy: all-or-nothing, so a failure can't leave a half-moved folder.
                 os.rename(old_folder, new_folder)
                 done.append(lambda: os.rename(new_folder, old_folder))
-            _fsync_dir(target_dir)  # the new entries are on disk before the original goes
+            _fsync_dir(
+                target_dir
+            )  # the new entries are on disk before the original goes
             os.unlink(s.path)  # last: once the original is gone, nothing may be undone
     except BaseException:
         temp.unlink(missing_ok=True)

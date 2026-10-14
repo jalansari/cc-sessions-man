@@ -25,7 +25,7 @@ def to_path(text: str) -> Path | None:
     parent, name = split_path(text.strip())
     try:
         return (Path(parent).expanduser() / name).resolve()
-    except (RuntimeError, OSError):
+    except RuntimeError, OSError:
         return None
 
 
@@ -47,8 +47,10 @@ def subfolders(parent: str, prefix: str) -> list[str]:
         raise FileNotFoundError(parent)
     with os.scandir(folder) as entries:
         names = [
-            e.name for e in entries
-            if e.name.startswith(prefix) and (prefix.startswith(".") or not e.name.startswith("."))
+            e.name
+            for e in entries
+            if e.name.startswith(prefix)
+            and (prefix.startswith(".") or not e.name.startswith("."))
             and e.is_dir()  # follows symlinks: a link to a folder counts
         ]
     return sorted(names, key=lambda n: (n.lower(), n))
@@ -62,7 +64,9 @@ def problem_span(text: str) -> tuple[int, int] | None:
     """
     parent, prefix = split_path(text)
     start = len(text) - len(prefix)  # where the name starts in the text as typed
-    whole_parent = (0, start) if start else (0, len(text))  # no "/" typed: the parent is home
+    whole_parent = (
+        (0, start) if start else (0, len(text))
+    )  # no "/" typed: the parent is home
     folder = _folder(parent)
     if folder is None or not folder.is_dir():
         return whole_parent

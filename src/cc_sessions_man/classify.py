@@ -86,15 +86,23 @@ def batch_prompt(batch: list[Session]) -> str:
 def error_labels(batch: list[Session], err: Exception, skip=()) -> dict[str, dict]:
     """In-memory "error" labels for a failed batch. Never cached, so they're retried next run."""
     msg = (str(err).strip().splitlines() or [type(err).__name__])[0][:200]
-    return {s.session_id: {"label": "error", "pending": msg} for s in batch if s.session_id not in skip}
+    return {
+        s.session_id: {"label": "error", "pending": msg}
+        for s in batch
+        if s.session_id not in skip
+    }
 
 
 def call_claude(prompt: str, model: str) -> dict:
     """One headless classification call. Returns claude's full JSON result (labels, cost, timing)."""
-    cmd = claude_command(model, SYSTEM_PROMPT, SCHEMA)  # no tools: it only reads the prompt
+    cmd = claude_command(
+        model, SYSTEM_PROMPT, SCHEMA
+    )  # no tools: it only reads the prompt
     # Run from an empty dir so no project CLAUDE.md is picked up.
     with tempfile.TemporaryDirectory() as cwd:
-        proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=cwd, timeout=300)
+        proc = subprocess.run(
+            cmd, input=prompt, capture_output=True, text=True, cwd=cwd, timeout=300
+        )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or proc.stdout.strip())
     out = json.loads(proc.stdout)
@@ -119,7 +127,9 @@ class Cache:
     def __init__(self, path: Path):
         self.path = path
         self._lock = threading.Lock()
-        self._dropped: set[str] = set()  # deleted here; don't let a merge bring them back
+        self._dropped: set[str] = (
+            set()
+        )  # deleted here; don't let a merge bring them back
         self.data = self._read_disk()  # {} if missing, unreadable, or not a JSON object
 
     def reload(self) -> None:
@@ -128,7 +138,9 @@ class Cache:
         with self._lock:
             self.data = self._merge(disk)
 
-    def partition(self, sessions: list[Session]) -> tuple[dict[str, dict], list[Session]]:
+    def partition(
+        self, sessions: list[Session]
+    ) -> tuple[dict[str, dict], list[Session]]:
         """Split finished sessions into cached labels and the ones still to classify.
 
         Running and interrupted sessions are skipped: their status comes from the
@@ -151,7 +163,11 @@ class Cache:
 
     def put(self, s: Session, label: str, pending: str) -> None:
         with self._lock:
-            self.data[s.session_id] = {"mtime": s.mtime, "label": label, "pending": pending}
+            self.data[s.session_id] = {
+                "mtime": s.mtime,
+                "label": label,
+                "pending": pending,
+            }
             self._dropped.discard(s.session_id)
 
     def drop(self, session_id: str) -> None:
@@ -162,7 +178,7 @@ class Cache:
     def _read_disk(self) -> dict:
         try:
             data = json.loads(self.path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return {}
         return data if isinstance(data, dict) else {}
 
@@ -175,7 +191,9 @@ class Cache:
         merged = {k: v for k, v in disk.items() if k not in self._dropped}
         for sid, mine in self.data.items():
             theirs = merged.get(sid)
-            if not isinstance(theirs, dict) or mine.get("mtime", 0) >= theirs.get("mtime", 0):
+            if not isinstance(theirs, dict) or mine.get("mtime", 0) >= theirs.get(
+                "mtime", 0
+            ):
                 merged[sid] = mine
         return merged
 
@@ -194,7 +212,11 @@ class Cache:
                 snapshot = dict(self.data)
             payload = json.dumps(snapshot, indent=1)
             with tempfile.NamedTemporaryFile(
-                "w", dir=self.path.parent, prefix=self.path.name, suffix=".tmp", delete=False
+                "w",
+                dir=self.path.parent,
+                prefix=self.path.name,
+                suffix=".tmp",
+                delete=False,
             ) as fh:
                 fh.write(payload)
             Path(fh.name).replace(self.path)
@@ -219,11 +241,15 @@ def classify(
     and the exception if the call failed (otherwise None).
     """
     if batch_size < 1 or jobs < 1:
-        raise ValueError(f"batch_size and jobs must be 1 or more (got {batch_size}, {jobs})")
+        raise ValueError(
+            f"batch_size and jobs must be 1 or more (got {batch_size}, {jobs})"
+        )
     results: dict[str, dict] = {}
     batches = [todo[i : i + batch_size] for i in range(0, len(todo), batch_size)]
     if progress and batches:
-        progress(f"Classifying {len(todo)} session(s) in {len(batches)} batch(es) with {model}…")
+        progress(
+            f"Classifying {len(todo)} session(s) in {len(batches)} batch(es) with {model}…"
+        )
 
     def work(batch: list[Session]):
         try:

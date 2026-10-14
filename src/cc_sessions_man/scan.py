@@ -33,7 +33,10 @@ def home_arg(value: str) -> Path:
 
 
 CLAUDE_HOME = claude_home_from_env()
-CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", "").strip() or Path.home() / ".cache") / "cc-sessions-man"
+CACHE_DIR = (
+    Path(os.environ.get("XDG_CACHE_HOME", "").strip() or Path.home() / ".cache")
+    / "cc-sessions-man"
+)
 SCAN_CACHE_VERSION = 3  # bump when Session fields or parsing change
 
 # Structural states, decided without a model.
@@ -56,7 +59,9 @@ class Session:
     live_status: str = ""  # busy / idle, from the live session file
     last_user_prompt: str = ""
     last_assistant_text: str = ""
-    context_tokens: int = 0  # context size at Claude's last reply (input + cached input tokens)
+    context_tokens: int = (
+        0  # context size at Claude's last reply (input + cached input tokens)
+    )
     model: str = ""  # model ID of Claude's last reply, e.g. claude-opus-5-5
 
 
@@ -80,7 +85,7 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
     for f in (home / "sessions").glob("*.json"):
         try:
             d = json.loads(f.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             continue
         if not isinstance(d, dict) or not isinstance(d.get("sessionId"), str):
             continue
@@ -96,7 +101,11 @@ def live_sessions(home: Path = CLAUDE_HOME) -> dict[str, dict]:
         # Claude records its process start time. If the PID now belongs to a process that
         # started at a different time, Claude died and the OS reused the PID.
         recorded = d.get("procStart")
-        if recorded is not None and (actual := _proc_start(pid)) is not None and str(recorded) != actual:
+        if (
+            recorded is not None
+            and (actual := _proc_start(pid)) is not None
+            and str(recorded) != actual
+        ):
             continue
         live[d["sessionId"]] = d
     return live
@@ -113,7 +122,11 @@ def _context_tokens(message) -> int:
     if not isinstance(usage, dict):
         return 0
     fields = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-    return sum(v for f in fields if isinstance(v := usage.get(f), int) and not isinstance(v, bool))
+    return sum(
+        v
+        for f in fields
+        if isinstance(v := usage.get(f), int) and not isinstance(v, bool)
+    )
 
 
 def _text(content) -> str:
@@ -121,7 +134,9 @@ def _text(content) -> str:
         return content
     if isinstance(content, list):
         return "\n".join(
-            _str(b.get("text")) for b in content if isinstance(b, dict) and b.get("type") == "text"
+            _str(b.get("text"))
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
         )
     return ""
 
@@ -136,7 +151,9 @@ def _is_tool_result(content) -> bool:
 
 def _is_local_command(text: str) -> bool:
     # Slash-command echoes and their output, not real prompts.
-    return text.lstrip().startswith(("<command-name>", "<local-command", "<command-message>"))
+    return text.lstrip().startswith(
+        ("<command-name>", "<local-command", "<command-message>")
+    )
 
 
 def parse_transcript(path: Path) -> Session | None:
@@ -150,7 +167,9 @@ def parse_transcript(path: Path) -> Session | None:
                 e = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(e, dict):  # valid JSON but not an entry, e.g. a truncated write
+            if not isinstance(
+                e, dict
+            ):  # valid JSON but not an entry, e.g. a truncated write
                 continue
             t = e.get("type")
             if t == "custom-title":
@@ -161,13 +180,19 @@ def parse_transcript(path: Path) -> Session | None:
                 s.title = _str(e.get("summary"))
             elif t == "last-prompt":
                 last_prompt_fallback = _str(e.get("lastPrompt")) or last_prompt_fallback
-            if t not in ("user", "assistant") or e.get("isSidechain") or e.get("isMeta"):
+            if (
+                t not in ("user", "assistant")
+                or e.get("isSidechain")
+                or e.get("isMeta")
+            ):
                 continue
             s.cwd = _str(e.get("cwd")) or s.cwd
             message = e.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             if t == "assistant" and (tokens := _context_tokens(message)):
-                s.context_tokens = tokens  # the latest reply's context is the session's current size
+                s.context_tokens = (
+                    tokens  # the latest reply's context is the session's current size
+                )
             # Claude Code writes "<synthetic>" on placeholder replies it makes itself (errors, interrupts).
             model = _str(message.get("model")) if isinstance(message, dict) else ""
             if t == "assistant" and model and model != "<synthetic>":
@@ -183,7 +208,9 @@ def parse_transcript(path: Path) -> Session | None:
                     s.last_user_prompt = text
             else:
                 blocks = content if isinstance(content, list) else []
-                if any(isinstance(b, dict) and b.get("type") == "tool_use" for b in blocks):
+                if any(
+                    isinstance(b, dict) and b.get("type") == "tool_use" for b in blocks
+                ):
                     last_kind = "tool_use"
                 else:
                     text = _text(content)
@@ -223,7 +250,7 @@ def _load_scan_cache(path: Path) -> dict:
     """Cached entries by transcript path; {} if the file is missing, stale or malformed."""
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return {}
     if not isinstance(data, dict) or data.get("version") != SCAN_CACHE_VERSION:
         return {}
@@ -232,8 +259,10 @@ def _load_scan_cache(path: Path) -> dict:
         return {}
     # Drop malformed entries so those transcripts are simply parsed again.
     return {
-        k: v for k, v in entries.items()
-        if isinstance(v, dict) and {"mtime", "size", "session"} <= v.keys()
+        k: v
+        for k, v in entries.items()
+        if isinstance(v, dict)
+        and {"mtime", "size", "session"} <= v.keys()
         and (v["session"] is None or isinstance(v["session"], dict))
     }
 
@@ -242,7 +271,9 @@ def _save_scan_cache(path: Path, entries: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A unique temp file per save: the UI and the CLI may save the same home's cache at
     # once, and a shared temp name would let them interleave or replace() each other's.
-    with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=path.name, suffix=".tmp", delete=False) as fh:
+    with tempfile.NamedTemporaryFile(
+        "w", dir=path.parent, prefix=path.name, suffix=".tmp", delete=False
+    ) as fh:
         fh.write(json.dumps({"version": SCAN_CACHE_VERSION, "entries": entries}))
     Path(fh.name).replace(path)
 
@@ -253,7 +284,9 @@ _DEFAULT = object()
 def scan_cache_path(home: Path) -> Path:
     """One scan cache per Claude home, so switching --claude-home doesn't evict the other."""
     digest = hashlib.sha256(str(home.expanduser().resolve()).encode()).hexdigest()[:12]
-    return CACHE_DIR / f"scan-{digest}.json"  # CACHE_DIR looked up now, so tests can redirect it
+    return (
+        CACHE_DIR / f"scan-{digest}.json"
+    )  # CACHE_DIR looked up now, so tests can redirect it
 
 
 def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
@@ -286,7 +319,11 @@ def scan(home: Path = CLAUDE_HOME, cache_path=_DEFAULT) -> list[Session]:
                     # one file hide every session. Remembered as "nothing to show" until the
                     # file changes, so it isn't re-read (and the cache rewritten) every scan.
                     s = None
-                hit = {"mtime": st.st_mtime, "size": st.st_size, "session": _to_cache(s)}
+                hit = {
+                    "mtime": st.st_mtime,
+                    "size": st.st_size,
+                    "session": _to_cache(s),
+                }
                 changed = True
         except FileNotFoundError:
             # Deleted between glob() and reading it (another viewer, or Claude Code cleanup).

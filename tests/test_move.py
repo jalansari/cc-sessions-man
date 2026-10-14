@@ -3,13 +3,13 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from test_delete import mark_live, run_ui
 
 import cc_sessions_man.move as move_mod
 import cc_sessions_man.ui as ui
 from cc_sessions_man.classify import Cache
 from cc_sessions_man.move import move_session, project_dir_name
 from cc_sessions_man.scan import parse_transcript, scan
-from test_delete import mark_live, run_ui
 
 SID = "11111111-2222-3333-4444-555555555555"
 
@@ -20,7 +20,9 @@ def test_project_dir_name_matches_claude_code():
     deep = "/home/ann/" + "deep/" * 45 + "café 😀"
     assert project_dir_name("/home/ann/.claude") == "-home-ann--claude"
     assert project_dir_name("/home/ann/code/my_app2") == "-home-ann-code-my-app2"
-    assert project_dir_name("/tmp/😀dir") == "-tmp---dir"  # an emoji is two UTF-16 code units
+    assert (
+        project_dir_name("/tmp/😀dir") == "-tmp---dir"
+    )  # an emoji is two UTF-16 code units
     assert project_dir_name(long) == "-a-" + "x" * 197 + "-oej0v1"
     assert project_dir_name(deep) == "-home-ann-" + "deep-" * 38 + "-4cz7se"
 
@@ -31,11 +33,27 @@ def make_session(tmp_path, root, cwds, extra_lines=()):
     proj = home / "projects" / project_dir_name(str(root))
     proj.mkdir(parents=True)
     (home / "sessions").mkdir()
-    lines = [json.dumps({"type": "user", "message": {"content": f"prompt {i}"}, "cwd": str(c),
-                         "timestamp": f"2026-10-01T10:0{i}:00Z"}) for i, c in enumerate(cwds)]
+    lines = [
+        json.dumps(
+            {
+                "type": "user",
+                "message": {"content": f"prompt {i}"},
+                "cwd": str(c),
+                "timestamp": f"2026-10-01T10:0{i}:00Z",
+            }
+        )
+        for i, c in enumerate(cwds)
+    ]
     lines += list(extra_lines)
-    lines.append(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]},
-                             "timestamp": "2026-10-01T10:09:00Z"}))
+    lines.append(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "done"}]},
+                "timestamp": "2026-10-01T10:09:00Z",
+            }
+        )
+    )
     path = proj / f"{SID}.jsonl"
     path.write_text("\n".join(lines) + "\n")
     (proj / SID / "subagents").mkdir(parents=True)
@@ -49,16 +67,26 @@ def test_move_rewrites_cwds_and_moves_the_files(tmp_path):
     (dest / "src").mkdir(parents=True)  # exists in the new folder too
     (root / "build").mkdir()  # doesn't
     untouched = ['{"type": "summary",   "summary": "spacing kept"}', "not json at all"]
-    home, s = make_session(tmp_path, root, [root, root / "src", root / "build", tmp_path / "elsewhere", root],
-                           untouched)
+    home, s = make_session(
+        tmp_path,
+        root,
+        [root, root / "src", root / "build", tmp_path / "elsewhere", root],
+        untouched,
+    )
 
     path = move_session(s, dest, home)
 
     assert path == home / "projects" / project_dir_name(str(dest)) / f"{SID}.jsonl"
     assert not s.path.exists() and not s.path.with_suffix("").exists()
-    assert (path.with_suffix("") / "subagents" / "agent-1.jsonl").exists()  # session folder came along
+    assert (
+        path.with_suffix("") / "subagents" / "agent-1.jsonl"
+    ).exists()  # session folder came along
     lines = path.read_text().splitlines()
-    cwds = [json.loads(line)["cwd"] for line in lines if line.startswith("{") and '"cwd"' in line]
+    cwds = [
+        json.loads(line)["cwd"]
+        for line in lines
+        if line.startswith("{") and '"cwd"' in line
+    ]
     assert cwds == [str(dest), str(dest / "src"), str(dest), str(dest), str(dest)]
     for line in untouched:
         assert line in lines  # byte for byte
@@ -73,8 +101,12 @@ def test_moving_this_kind_of_session(tmp_path):
     dest.mkdir()
     home, s = make_session(tmp_path, root, [root, root / "projects", root])
     path = move_session(s, dest, home)
-    assert path.parent.name == project_dir_name(str(dest)) and parse_transcript(path).cwd == str(dest)
-    assert {e.get("cwd") for e in map(json.loads, path.read_text().splitlines())} - {None} == {str(dest)}
+    assert path.parent.name == project_dir_name(str(dest)) and parse_transcript(
+        path
+    ).cwd == str(dest)
+    assert {e.get("cwd") for e in map(json.loads, path.read_text().splitlines())} - {
+        None
+    } == {str(dest)}
 
 
 def test_move_refusals_leave_everything_in_place(tmp_path):
@@ -113,13 +145,19 @@ def test_a_failed_move_restores_the_original(tmp_path, monkeypatch):
     real_rename, real_unlink = move_mod.os.rename, move_mod.os.unlink
 
     def check_restored():
-        assert s.path.read_bytes() == before and (s.path.with_suffix("") / "subagents").is_dir()
-        assert list(target_dir.iterdir()) == []  # no new transcript, folder or temp file
+        assert (
+            s.path.read_bytes() == before
+            and (s.path.with_suffix("") / "subagents").is_dir()
+        )
+        assert (
+            list(target_dir.iterdir()) == []
+        )  # no new transcript, folder or temp file
         assert [x.session_id for x in scan(home, cache_path=None)] == [SID]
 
     # The session folder can't be moved.
     def no_rename(*_):
         raise OSError("cross-device link")
+
     monkeypatch.setattr(move_mod.os, "rename", no_rename)
     with pytest.raises(OSError):
         move_session(s, dest, home)
@@ -131,6 +169,7 @@ def test_a_failed_move_restores_the_original(tmp_path, monkeypatch):
         if Path(path) == s.path:
             raise PermissionError("read-only")
         real_unlink(path)
+
     monkeypatch.setattr(move_mod.os, "unlink", no_unlink_original)
     with pytest.raises(PermissionError):
         move_session(s, dest, home)
@@ -140,6 +179,7 @@ def test_a_failed_move_restores_the_original(tmp_path, monkeypatch):
     # Writing the new copy fails (disk full): no partial temp file is left behind.
     def full(*_):
         raise OSError("No space left on device")
+
     monkeypatch.setattr(move_mod.os, "fsync", full)
     with pytest.raises(OSError):
         move_session(s, dest, home)
@@ -153,11 +193,19 @@ def test_new_copy_is_on_disk_before_the_original_is_removed(tmp_path, monkeypatc
     home, s = make_session(tmp_path, root, [root])
     events = []
     real_fsync, real_unlink = move_mod.os.fsync, move_mod.os.unlink
-    monkeypatch.setattr(move_mod.os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd)))
-    monkeypatch.setattr(move_mod.os, "unlink", lambda p: (events.append(("unlink", Path(p))), real_unlink(p)))
+    monkeypatch.setattr(
+        move_mod.os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd))
+    )
+    monkeypatch.setattr(
+        move_mod.os,
+        "unlink",
+        lambda p: (events.append(("unlink", Path(p))), real_unlink(p)),
+    )
     move_session(s, dest, home)
     removed = events.index(("unlink", s.path))
-    assert events[:removed].count("fsync") >= 2  # the file, and the folder holding its name
+    assert (
+        events[:removed].count("fsync") >= 2
+    )  # the file, and the folder holding its name
 
 
 def test_a_session_resumed_during_the_move_is_left_alone(tmp_path, monkeypatch):
@@ -170,7 +218,12 @@ def test_a_session_resumed_during_the_move_is_left_alone(tmp_path, monkeypatch):
     def write_then_resume(target, lines):
         temp = real_write(target, lines)
         with s.path.open("a") as fh:  # Claude Code appends while the copy is being made
-            fh.write(json.dumps({"type": "user", "message": {"content": "new"}, "cwd": str(root)}) + "\n")
+            fh.write(
+                json.dumps(
+                    {"type": "user", "message": {"content": "new"}, "cwd": str(root)}
+                )
+                + "\n"
+            )
         return temp
 
     monkeypatch.setattr(move_mod, "_write_temp", write_then_resume)
@@ -184,11 +237,22 @@ def test_lines_with_unpaired_surrogates_can_be_moved(tmp_path):
     root, dest = tmp_path / "a", tmp_path / "b"
     root.mkdir()
     dest.mkdir()
-    cut = '{"type":"user","message":{"content":"cut mid-emoji \\ud83d"},"cwd":"%s"}' % root
+    cut = (
+        '{"type":"user","message":{"content":"cut mid-emoji \\ud83d"},"cwd":"%s"}'
+        % root
+    )
     home, s = make_session(tmp_path, root, [root], [cut])
     path = move_session(s, dest, home)
-    entry = next(json.loads(line) for line in path.read_text().splitlines() if "mid-emoji" in line)
-    assert entry == {"type": "user", "message": {"content": "cut mid-emoji \ud83d"}, "cwd": str(dest)}
+    entry = next(
+        json.loads(line)
+        for line in path.read_text().splitlines()
+        if "mid-emoji" in line
+    )
+    assert entry == {
+        "type": "user",
+        "message": {"content": "cut mid-emoji \ud83d"},
+        "cwd": str(dest),
+    }
 
 
 def test_moving_into_a_subfolder_keeps_folders_already_inside_it(tmp_path):
@@ -219,7 +283,9 @@ def test_ui_move_keeps_the_label_and_shows_the_new_folder(tmp_path, monkeypatch)
         await pilot.press("enter")
         await pilot.pause()
         row = app.rows[0]
-        assert row.session.cwd == str(dest) and row.group == "decision"  # label carried over
+        assert (
+            row.session.cwd == str(dest) and row.group == "decision"
+        )  # label carried over
         assert row.session.path.parent.name == project_dir_name(str(dest))
         assert Cache(home / "cache.json").get(row.session)["label"] == "decision"
         # A scan that ran during the move can list it in both folders: shown once.
@@ -253,7 +319,9 @@ def test_ui_move_refuses_a_running_session_and_bad_folders(tmp_path, monkeypatch
     assert s.path.exists()
 
 
-def test_ui_moves_to_the_last_folder_when_the_session_started_elsewhere(tmp_path, monkeypatch):
+def test_ui_moves_to_the_last_folder_when_the_session_started_elsewhere(
+    tmp_path, monkeypatch
+):
     # Started in /a (so filed under /a's project folder), last worked in /b.
     a, b = tmp_path / "a", tmp_path / "b"
     a.mkdir()
@@ -264,7 +332,9 @@ def test_ui_moves_to_the_last_folder_when_the_session_started_elsewhere(tmp_path
         await pilot.press("m")
         await pilot.pause()
         assert app.screen.query_one("#new-folder", ui.Input).value == str(b)
-        await pilot.press("enter")  # the folder shown: still a real move, to /b's project
+        await pilot.press(
+            "enter"
+        )  # the folder shown: still a real move, to /b's project
         await pilot.pause()
         assert app.rows[0].session.path.parent.name == project_dir_name(str(b))
 
@@ -280,7 +350,9 @@ def test_ui_move_updates_rows_replaced_while_the_dialog_was_open(tmp_path, monke
     async def steps(app, pilot):
         await pilot.press("m")
         await pilot.pause()
-        app.rows = [ui.Row(replace(r.session), {}) for r in app.rows]  # an auto-refresh landed
+        app.rows = [
+            ui.Row(replace(r.session), {}) for r in app.rows
+        ]  # an auto-refresh landed
         app.screen.query_one("#new-folder", ui.Input).value = str(b)
         await pilot.press("enter")
         await pilot.pause()
@@ -305,7 +377,10 @@ def test_a_session_started_during_the_move_is_left_alone(tmp_path, monkeypatch):
     monkeypatch.setattr(move_mod, "_write_temp", write_then_start)
     with pytest.raises(ValueError, match="changed during the move"):
         move_session(s, dest, home)
-    assert s.path.exists() and list((home / "projects" / project_dir_name(str(dest))).iterdir()) == []
+    assert (
+        s.path.exists()
+        and list((home / "projects" / project_dir_name(str(dest))).iterdir()) == []
+    )
 
 
 def test_tab_in_the_move_dialog_completes_folders(tmp_path, monkeypatch):
@@ -322,9 +397,13 @@ def test_tab_in_the_move_dialog_completes_folders(tmp_path, monkeypatch):
         field = app.screen.query_one("#new-folder", ui.PathInput)
         field.value = ""
         await pilot.press("tab")
-        assert field.value == "~/proj-one" and field.has_focus  # Tab completes, not moves focus
+        assert (
+            field.value == "~/proj-one" and field.has_focus
+        )  # Tab completes, not moves focus
         await pilot.press("tab")
-        assert field.value == "~/proj-two" and field.cursor_position == len("~/proj-two")
+        assert field.value == "~/proj-two" and field.cursor_position == len(
+            "~/proj-two"
+        )
         await pilot.press("enter")
         await pilot.pause()
         assert app.rows[0].session.cwd == str(tmp_path / "fakehome" / "proj-two")

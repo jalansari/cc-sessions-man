@@ -1,8 +1,8 @@
 """cc-sessions: list Claude Code sessions and whether each is done or waiting on you."""
 
 import argparse
-import math
 import json
+import math
 import os
 import shlex
 import sys
@@ -11,7 +11,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
-from .scan import CACHE_DIR, CLAUDE_HOME, DEFAULT_CLAUDE_HOME, MID_TASK, NO_REPLY, RUNNING, Session, home_arg, scan
+from .scan import (
+    CACHE_DIR,
+    CLAUDE_HOME,
+    DEFAULT_CLAUDE_HOME,
+    MID_TASK,
+    NO_REPLY,
+    RUNNING,
+    Session,
+    home_arg,
+    scan,
+)
 from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, search
 
 CACHE_PATH = CACHE_DIR / "labels.json"
@@ -64,7 +74,7 @@ def short_path(p: str) -> str:
     """Abbreviate the home folder to ~, only for the folder itself or paths inside it."""
     home = str(Path.home())
     if p == home or p.startswith(home + os.sep):
-        return "~" + p[len(home):]
+        return "~" + p[len(home) :]
     return p
 
 
@@ -115,12 +125,33 @@ refresh_interval_arg = number_arg(float, 1, allow_zero=True)
 
 def add_common_args(p: argparse.ArgumentParser) -> None:
     """Options shared by cc-sessions and cc-sessions-ui."""
-    p.add_argument("--no-llm", action="store_true", help="don't call the model; use cached labels only")
-    p.add_argument("--model", default="haiku", help="model alias or ID for classification (default: haiku)")
-    p.add_argument("--batch-size", type=positive_int, default=DEFAULT_BATCH_SIZE, help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})")
-    p.add_argument("-j", "--jobs", type=positive_int, default=DEFAULT_JOBS, help=f"parallel claude calls (default: {DEFAULT_JOBS})")
     p.add_argument(
-        "--claude-home", type=home_arg, default=CLAUDE_HOME,
+        "--no-llm",
+        action="store_true",
+        help="don't call the model; use cached labels only",
+    )
+    p.add_argument(
+        "--model",
+        default="haiku",
+        help="model alias or ID for classification (default: haiku)",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=positive_int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"sessions per claude call (default: {DEFAULT_BATCH_SIZE})",
+    )
+    p.add_argument(
+        "-j",
+        "--jobs",
+        type=positive_int,
+        default=DEFAULT_JOBS,
+        help=f"parallel claude calls (default: {DEFAULT_JOBS})",
+    )
+    p.add_argument(
+        "--claude-home",
+        type=home_arg,
+        default=CLAUDE_HOME,
         help=f"Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now {short_path(str(CLAUDE_HOME))})",
     )
 
@@ -128,11 +159,15 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
 def add_search_args(p: argparse.ArgumentParser) -> None:
     """AI search options, shared by cc-sessions and cc-sessions-ui."""
     p.add_argument(
-        "--search-model", default=DEFAULT_SEARCH_MODEL,
+        "--search-model",
+        default=DEFAULT_SEARCH_MODEL,
         help=f"model alias or ID for AI search (default: {DEFAULT_SEARCH_MODEL})",
     )
     p.add_argument(
-        "--search-budget", type=positive_float, default=DEFAULT_SEARCH_BUDGET, metavar="USD",
+        "--search-budget",
+        type=positive_float,
+        default=DEFAULT_SEARCH_BUDGET,
+        metavar="USD",
         help=f"stop an AI search that costs more than USD (default: {DEFAULT_SEARCH_BUDGET:g}). "
         "Checked between steps, so a search can go over by one step",
     )
@@ -140,17 +175,33 @@ def add_search_args(p: argparse.ArgumentParser) -> None:
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="cc-sessions", description=__doc__)
-    p.add_argument("-n", "--limit", type=positive_int, help="only the N most recent sessions")
-    p.add_argument("--days", type=positive_float, help="only sessions active in the last N days")
     p.add_argument(
-        "-s", "--show", action="append", choices=list(GROUPS),
+        "-n", "--limit", type=positive_int, help="only the N most recent sessions"
+    )
+    p.add_argument(
+        "--days", type=positive_float, help="only sessions active in the last N days"
+    )
+    p.add_argument(
+        "-s",
+        "--show",
+        action="append",
+        choices=list(GROUPS),
         help="only these groups (repeatable). Default: everything",
     )
-    p.add_argument("--pending", action="store_true", help="shorthand for --show decision --show action --show interrupted")
-    p.add_argument("--refresh", action="store_true", help="ignore cached labels for the listed sessions and re-classify them")
+    p.add_argument(
+        "--pending",
+        action="store_true",
+        help="shorthand for --show decision --show action --show interrupted",
+    )
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="ignore cached labels for the listed sessions and re-classify them",
+    )
     p.add_argument("--json", action="store_true", help="print JSON instead of a table")
     p.add_argument(
-        "--search", metavar="QUERY",
+        "--search",
+        metavar="QUERY",
         help="AI search: ask claude to look through the transcripts for sessions matching QUERY, "
         "and list them most relevant first. With -n or --days, only those sessions can match",
     )
@@ -160,22 +211,39 @@ def parse_args(argv=None):
 
 
 def print_search(args, sessions: list[Session]) -> int:
-    print(f"Searching {len(sessions)} sessions with {args.search_model}…", file=sys.stderr)
+    print(
+        f"Searching {len(sessions)} sessions with {args.search_model}…", file=sys.stderr
+    )
     try:
-        result = search(sessions, args.search, args.search_model, args.claude_home, args.search_budget)
+        result = search(
+            sessions,
+            args.search,
+            args.search_model,
+            args.claude_home,
+            args.search_budget,
+        )
     except (RuntimeError, ValueError) as exc:
         print(f"AI search failed: {exc}", file=sys.stderr)
         return 1
     by_id = {s.session_id: s for s in sessions}
     found = [(by_id[m.session_id], m.reason) for m in result.matches]
     if args.json:
-        print(json.dumps([
-            {
-                "session_id": s.session_id, "title": s.title, "cwd": s.cwd, "last_activity": s.last_timestamp,
-                "reason": reason, "resume": resume_command(args.claude_home, s.session_id, s.cwd),
-            }
-            for s, reason in found
-        ], indent=2))
+        print(
+            json.dumps(
+                [
+                    {
+                        "session_id": s.session_id,
+                        "title": s.title,
+                        "cwd": s.cwd,
+                        "last_activity": s.last_timestamp,
+                        "reason": reason,
+                        "resume": resume_command(args.claude_home, s.session_id, s.cwd),
+                    }
+                    for s, reason in found
+                ],
+                indent=2,
+            )
+        )
     else:
         for s, reason in found:
             print(f"{s.last_timestamp[:10]}  {s.session_id}  {short_path(s.cwd)}")
@@ -183,7 +251,10 @@ def print_search(args, sessions: list[Session]) -> int:
             print(f"    {reason}")
         print(f"\n{len(found)} found  (${result.cost_usd:.2f})", file=sys.stderr)
     if result.unknown:
-        print(f"Ignored {len(result.unknown)} session IDs outside the sessions searched.", file=sys.stderr)
+        print(
+            f"Ignored {len(result.unknown)} session IDs outside the sessions searched.",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -206,6 +277,7 @@ def main(argv=None) -> int:
         # Sessions outside -n / --days aren't listed, so they're never touched.
         todo = [s for s in sessions if s.session_id in labels] + todo
     if not args.no_llm:
+
         def progress(msg):
             print(msg, file=sys.stderr)
 
@@ -215,8 +287,14 @@ def main(argv=None) -> int:
             if err:
                 failed.update(error_labels(batch, err, skip=new))
 
-        labels.update(classify(todo, cache, args.model, args.batch_size, args.jobs, progress, on_batch))
-        labels.update(failed)  # shown as "Classification failed"; not cached, so retried next run
+        labels.update(
+            classify(
+                todo, cache, args.model, args.batch_size, args.jobs, progress, on_batch
+            )
+        )
+        labels.update(
+            failed
+        )  # shown as "Classification failed"; not cached, so retried next run
 
     show = set(args.show or [])
     if args.pending:
@@ -231,15 +309,26 @@ def main(argv=None) -> int:
         rows.append((g, s, detail_of(s, info)))
 
     if args.json:
-        print(json.dumps([
-            {
-                "group": g, "status_rank": STATUS_RANK[g], "session_id": s.session_id, "title": s.title, "cwd": s.cwd,
-                "last_activity": s.last_timestamp, "detail": d, "context_tokens": s.context_tokens,
-                "model": s.model,
-                "resume": resume_command(args.claude_home, s.session_id, s.cwd),
-            }
-            for g, s, d in rows
-        ], indent=2))
+        print(
+            json.dumps(
+                [
+                    {
+                        "group": g,
+                        "status_rank": STATUS_RANK[g],
+                        "session_id": s.session_id,
+                        "title": s.title,
+                        "cwd": s.cwd,
+                        "last_activity": s.last_timestamp,
+                        "detail": d,
+                        "context_tokens": s.context_tokens,
+                        "model": s.model,
+                        "resume": resume_command(args.claude_home, s.session_id, s.cwd),
+                    }
+                    for g, s, d in rows
+                ],
+                indent=2,
+            )
+        )
         return 0
 
     for g, label in GROUPS.items():
@@ -248,13 +337,17 @@ def main(argv=None) -> int:
             continue
         print(f"\n== {label} ({len(members)}) ==")
         for s, d in members:
-            print(f"{s.last_timestamp[:16].replace('T', ' ')}  {s.session_id}  {short_path(s.cwd)}")
+            print(
+                f"{s.last_timestamp[:16].replace('T', ' ')}  {s.session_id}  {short_path(s.cwd)}"
+            )
             print(f"    {s.title}")
             if d:
                 print(f"    → {d}")
     counts = Counter(g for g, _, _ in rows)
     print("\n" + ", ".join(f"{GROUPS[g]}: {counts[g]}" for g in GROUPS if counts[g]))
-    print(f"Resume one with: cd <dir> && {config_prefix(args.claude_home)}claude --resume <session-id>")
+    print(
+        f"Resume one with: cd <dir> && {config_prefix(args.claude_home)}claude --resume <session-id>"
+    )
     return 0
 
 

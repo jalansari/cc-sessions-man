@@ -17,10 +17,24 @@ def make_home(tmp_path, ids, cwd="/w"):
     proj = tmp_path / "projects" / "-w"
     proj.mkdir(parents=True)
     for i, sid in enumerate(ids):
-        (proj / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
-            {"type": "user", "message": {"content": f"prompt {sid}"}, "cwd": str(cwd), "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"},
-            {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}, "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:30Z"},
-        ]))
+        (proj / f"{sid}.jsonl").write_text(
+            "\n".join(
+                json.dumps(e)
+                for e in [
+                    {
+                        "type": "user",
+                        "message": {"content": f"prompt {sid}"},
+                        "cwd": str(cwd),
+                        "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z",
+                    },
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "done"}]},
+                        "timestamp": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:30Z",
+                    },
+                ]
+            )
+        )
         (proj / sid / "subagents").mkdir(parents=True)
         (tmp_path / "file-history" / sid).mkdir(parents=True)
         (tmp_path / "session-env" / sid).mkdir(parents=True)
@@ -32,6 +46,7 @@ def make_home(tmp_path, ids, cwd="/w"):
 def trashed(monkeypatch):
     """Record what would go to the Trash, and actually remove it so rescans see the change."""
     import shutil
+
     moved = []
 
     def fake(p):
@@ -47,14 +62,20 @@ def test_trash_session_moves_all_session_files(tmp_path, trashed):
     s = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
     delete_mod.trash_session(s, home)
     assert sorted(p.relative_to(home).as_posix() for p in trashed) == [
-        "file-history/aaa", "projects/-w/aaa", "projects/-w/aaa.jsonl", "session-env/aaa",
+        "file-history/aaa",
+        "projects/-w/aaa",
+        "projects/-w/aaa.jsonl",
+        "session-env/aaa",
     ]
 
 
 def mark_live(home, sid):
     """Register a live session the way Claude Code does, using this test's own (alive) pid."""
     import os
-    (home / "sessions" / f"{sid}.json").write_text(json.dumps({"pid": os.getpid(), "sessionId": sid}))
+
+    (home / "sessions" / f"{sid}.json").write_text(
+        json.dumps({"pid": os.getpid(), "sessionId": sid})
+    )
 
 
 def test_trash_session_refuses_running(tmp_path, trashed):
@@ -91,7 +112,9 @@ def run_ui(home, monkeypatch, steps):
 
 def select_header(app, key):
     """Sort as a click on a column heading does, without depending on where the heading is."""
-    app.on_data_table_header_selected(SimpleNamespace(column_key=SimpleNamespace(value=key)))
+    app.on_data_table_header_selected(
+        SimpleNamespace(column_key=SimpleNamespace(value=key))
+    )
 
 
 def test_ui_cancel_keeps_session(tmp_path, monkeypatch, trashed):
@@ -133,7 +156,11 @@ def test_ui_streams_classification_in_batches(tmp_path, monkeypatch):
     calls = []
 
     def fake_run(prompt, model):
-        ids = [line.split('"')[1] for line in prompt.splitlines() if line.startswith("<session id=")]
+        ids = [
+            line.split('"')[1]
+            for line in prompt.splitlines()
+            if line.startswith("<session id=")
+        ]
         calls.append(ids)
         if len(calls) > 1:
             gate.wait(5)  # hold later batches until the test has looked at the table
@@ -158,7 +185,9 @@ def test_ui_streams_classification_in_batches(tmp_path, monkeypatch):
 
     first, queued, final, left = asyncio.run(go())
     assert sorted(len(c) for c in calls) == [2, 5]
-    assert first.count("done") in (2, 5) and first.count("unclassified") == 7 - first.count("done")
+    assert first.count("done") in (2, 5) and first.count(
+        "unclassified"
+    ) == 7 - first.count("done")
     assert queued == 7 - first.count("done")
     assert final == ["done"] * 7 and left == set()
 
@@ -174,7 +203,14 @@ def test_ui_keeps_selected_row_in_place_on_refresh(tmp_path, monkeypatch):
             await app.workers.wait_for_complete()
             await pilot.pause()
             # Alternate labels: 40 "action" rows sort above 40 "done" rows.
-            app.apply_batch({sid: {"label": ("action", "done")[i % 2], "pending": ""} for i, sid in enumerate(ids)}, ids, 80)
+            app.apply_batch(
+                {
+                    sid: {"label": ("action", "done")[i % 2], "pending": ""}
+                    for i, sid in enumerate(ids)
+                },
+                ids,
+                80,
+            )
             await pilot.pause()
             table = app.query_one(ui.DataTable)
             table.move_cursor(row=70)
@@ -185,12 +221,19 @@ def test_ui_keeps_selected_row_in_place_on_refresh(tmp_path, monkeypatch):
 
             app.render_table()  # plain refresh, e.g. after marking
             await pilot.pause()
-            plain = (app.current_row().session.session_id, table.cursor_row - table.scroll_y)
+            plain = (
+                app.current_row().session.session_id,
+                table.cursor_row - table.scroll_y,
+            )
 
             # a batch result moves the selected "done" row up into the "action" group
             app.apply_batch({sid: {"label": "action", "pending": ""}}, [sid], 1)
             await pilot.pause()
-            moved = (app.current_row().session.session_id, table.cursor_row - table.scroll_y, table.cursor_row)
+            moved = (
+                app.current_row().session.session_id,
+                table.cursor_row - table.scroll_y,
+                table.cursor_row,
+            )
             return sid, before, plain, moved
 
     sid, before, plain, moved = asyncio.run(go())
@@ -222,13 +265,17 @@ def test_ui_shift_space_clears_marks_or_marks_one(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa", "bbb", "ccc"])
 
     async def steps(app, pilot):
-        await pilot.press("shift+space")  # nothing marked: marks the top row, like Space
+        await pilot.press(
+            "shift+space"
+        )  # nothing marked: marks the top row, like Space
         assert app.marked == {"ccc"}
         await pilot.press("space")
         assert app.marked == {"ccc", "bbb"}
         await pilot.press("shift+space")  # something marked: clears them all
         assert app.marked == set()
-        await pilot.press("ctrl+home", "space", "space", "u")  # u unmarks too, in any terminal
+        await pilot.press(
+            "ctrl+home", "space", "space", "u"
+        )  # u unmarks too, in any terminal
         assert app.marked == set()
         cursor = app.query_one(ui.DataTable).cursor_row
         await pilot.press("u")  # nothing marked: u must not mark anything
@@ -243,11 +290,19 @@ def test_rename_session_writes_transcript_and_sidecar(tmp_path):
 
     home = make_home(tmp_path, ["aaa"])
     path = home / "projects" / "-w" / "aaa.jsonl"
-    path.write_bytes(path.read_bytes().rstrip(b"\n"))  # no trailing newline: must not glue lines
+    path.write_bytes(
+        path.read_bytes().rstrip(b"\n")
+    )  # no trailing newline: must not glue lines
     rename_session(parse_transcript(path), "  my   new title ", home)
     last = json.loads(path.read_text().splitlines()[-1])
-    assert last == {"type": "custom-title", "customTitle": "my new title", "sessionId": "aaa"}
-    assert json.loads((path.with_suffix("") / "custom-title.json").read_text()) == {"customTitle": "my new title"}
+    assert last == {
+        "type": "custom-title",
+        "customTitle": "my new title",
+        "sessionId": "aaa",
+    }
+    assert json.loads((path.with_suffix("") / "custom-title.json").read_text()) == {
+        "customTitle": "my new title"
+    }
     assert parse_transcript(path).title == "my new title"
 
     s = parse_transcript(path)
@@ -272,7 +327,9 @@ def test_ui_rename_keeps_label(tmp_path, monkeypatch):
         await pilot.press("n")
         await pilot.pause()
         assert isinstance(app.screen, ui.RenameSession)
-        await pilot.press("ctrl+a", "ctrl+k", *"renamed", "enter")  # clear the prefilled title, type a new one
+        await pilot.press(
+            "ctrl+a", "ctrl+k", *"renamed", "enter"
+        )  # clear the prefilled title, type a new one
         await pilot.pause()
         row = app.current_row()
         assert row.session.title == "renamed"
@@ -281,7 +338,9 @@ def test_ui_rename_keeps_label(tmp_path, monkeypatch):
     run_ui(home, monkeypatch, steps)
     assert parse_transcript(home / "projects" / "-w" / "aaa.jsonl").title == "renamed"
     fresh = parse_transcript(home / "projects" / "-w" / "aaa.jsonl")
-    assert Cache(home / "cache.json").get(fresh)["label"] == "decision"  # no re-classification needed
+    assert (
+        Cache(home / "cache.json").get(fresh)["label"] == "decision"
+    )  # no re-classification needed
 
 
 def test_ui_resume_refuses_when_folder_is_gone(tmp_path, monkeypatch):
@@ -313,7 +372,9 @@ def test_ui_resume_refuses_when_folder_is_gone(tmp_path, monkeypatch):
 def test_main_refuses_to_resume_into_missing_folder(tmp_path, monkeypatch, capsys):
     from cc_sessions_man.scan import Session
 
-    s = Session(session_id="x", path=tmp_path / "x.jsonl", mtime=0, cwd=str(tmp_path / "gone"))
+    s = Session(
+        session_id="x", path=tmp_path / "x.jsonl", mtime=0, cwd=str(tmp_path / "gone")
+    )
     monkeypatch.setattr(ui.SessionsApp, "run", lambda self: s)
     monkeypatch.setattr(ui.os, "execve", lambda *a: pytest.fail("must not exec claude"))
     assert ui.main(["--no-llm", "--claude-home", str(tmp_path)]) == 1
@@ -356,30 +417,88 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
     proj.mkdir(parents=True)
     (tmp_path / "sessions").mkdir()
     layout = [  # (session id, folder, minute of last activity, label); the two "tie"s share a time
-        ("a-act-old", "/a", 10, "action"), ("b-act-old", "/b", 20, "action"),
-        ("a-tie", "/a", 25, "done"), ("b-tie", "/b", 25, "action"),
-        ("a-act-new", "/a", 30, "action"), ("b-done-new", "/b", 40, "done"), ("a-done-new", "/a", 50, "done"),
+        ("a-act-old", "/a", 10, "action"),
+        ("b-act-old", "/b", 20, "action"),
+        ("a-tie", "/a", 25, "done"),
+        ("b-tie", "/b", 25, "action"),
+        ("a-act-new", "/a", 30, "action"),
+        ("b-done-new", "/b", 40, "done"),
+        ("a-done-new", "/a", 50, "done"),
     ]
     for sid, folder, minute, _ in layout:
-        (proj / f"{sid}.jsonl").write_text("\n".join(json.dumps(e) for e in [
-            {"type": "user", "message": {"content": sid}, "cwd": folder, "timestamp": f"2026-10-01T10:{minute:02d}:00Z"},
-            {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}, "timestamp": f"2026-10-01T10:{minute:02d}:30Z"},
-        ]))
+        (proj / f"{sid}.jsonl").write_text(
+            "\n".join(
+                json.dumps(e)
+                for e in [
+                    {
+                        "type": "user",
+                        "message": {"content": sid},
+                        "cwd": folder,
+                        "timestamp": f"2026-10-01T10:{minute:02d}:00Z",
+                    },
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "ok"}]},
+                        "timestamp": f"2026-10-01T10:{minute:02d}:30Z",
+                    },
+                ]
+            )
+        )
     labels = {sid: {"label": label, "pending": ""} for sid, _, _, label in layout}
 
     expected = [
         # 1) status, then last activity
-        (["a-act-new", "b-tie", "b-act-old", "a-act-old", "a-done-new", "b-done-new", "a-tie"],
-         {"Status ^1", "Last activity v2"}),
+        (
+            [
+                "a-act-new",
+                "b-tie",
+                "b-act-old",
+                "a-act-old",
+                "a-done-new",
+                "b-done-new",
+                "a-tie",
+            ],
+            {"Status ^1", "Last activity v2"},
+        ),
         # 2) last activity, then status (the tie: action before done)
-        (["a-done-new", "b-done-new", "a-act-new", "b-tie", "a-tie", "b-act-old", "a-act-old"],
-         {"Last activity v1", "Status ^2"}),
+        (
+            [
+                "a-done-new",
+                "b-done-new",
+                "a-act-new",
+                "b-tie",
+                "a-tie",
+                "b-act-old",
+                "a-act-old",
+            ],
+            {"Last activity v1", "Status ^2"},
+        ),
         # 3) folder, then status, then last activity
-        (["a-act-new", "a-act-old", "a-done-new", "a-tie", "b-tie", "b-act-old", "b-done-new"],
-         {"Folder ^1", "Status ^2", "Last activity v3"}),
+        (
+            [
+                "a-act-new",
+                "a-act-old",
+                "a-done-new",
+                "a-tie",
+                "b-tie",
+                "b-act-old",
+                "b-done-new",
+            ],
+            {"Folder ^1", "Status ^2", "Last activity v3"},
+        ),
         # 4) last activity, then folder, then status (the tie: /a before /b)
-        (["a-done-new", "b-done-new", "a-act-new", "a-tie", "b-tie", "b-act-old", "a-act-old"],
-         {"Last activity v1", "Folder ^2", "Status ^3"}),
+        (
+            [
+                "a-done-new",
+                "b-done-new",
+                "a-act-new",
+                "a-tie",
+                "b-tie",
+                "b-act-old",
+                "a-act-old",
+            ],
+            {"Last activity v1", "Folder ^2", "Status ^3"},
+        ),
     ]
 
     async def steps(app, pilot):
@@ -387,7 +506,11 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         await pilot.pause()
         table = app.query_one(ui.DataTable)
         order = lambda: [r.session.session_id for r in app.visible_rows()]
-        marked = lambda: {str(c.label) for c in table.columns.values() if re.search(r" [\^v]\d?$", str(c.label))}
+        marked = lambda: {
+            str(c.label)
+            for c in table.columns.values()
+            if re.search(r" [\^v]\d?$", str(c.label))
+        }
         for n, (rows, headings) in enumerate(expected):
             if n:
                 await pilot.press("s")
@@ -396,10 +519,14 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         await pilot.press("s")  # wraps round to 1
         await pilot.pause()
         assert (order(), marked()) == expected[0]
-        await pilot.click("#table", offset=(30, 0))  # a header click: a single-column sort
+        await pilot.click(
+            "#table", offset=(30, 0)
+        )  # a header click: a single-column sort
         await pilot.pause()
         assert marked() == {"Started v"}  # one sort column: no number; newest first
-        await pilot.click("#table", offset=(30, 0))  # a second click in the same place reverses it
+        await pilot.click(
+            "#table", offset=(30, 0)
+        )  # a second click in the same place reverses it
         await pilot.pause()
         await pilot.pause()
         assert marked() == {"Started ^"}
@@ -408,6 +535,7 @@ def test_s_cycles_four_sort_orders_and_marks_headings(tmp_path, monkeypatch):
         assert marked() == expected[0][1]
 
     run_ui(tmp_path, monkeypatch, steps)
+
 
 def test_trash_session_tries_every_file_and_reports_failures(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["aaa"])
@@ -422,7 +550,9 @@ def test_trash_session_tries_every_file_and_reports_failures(tmp_path, monkeypat
     monkeypatch.setattr(delete_mod, "send2trash", flaky)
     with pytest.raises(delete_mod.PartialDelete) as exc:
         delete_mod.trash_session(s, home)
-    assert "projects/-w/aaa.jsonl" in moved and "session-env/aaa" in moved  # carried on past the failure
+    assert (
+        "projects/-w/aaa.jsonl" in moved and "session-env/aaa" in moved
+    )  # carried on past the failure
     assert [p.parent.name for p, _ in exc.value.failed] == ["file-history"]
 
 
@@ -525,25 +655,46 @@ def test_context_column_shows_and_sorts(tmp_path, monkeypatch):
     for sid, tokens in (("small", 1500), ("big", 250_000)):
         path = home / "projects" / "-w" / f"{sid}.jsonl"
         with path.open("a") as fh:
-            fh.write("\n" + json.dumps({"type": "assistant", "timestamp": "2026-10-01T00:00:30Z", "message": {
-                "content": [{"type": "text", "text": "ok"}], "usage": {"cache_read_input_tokens": tokens}}}) + "\n")
+            fh.write(
+                "\n"
+                + json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-10-01T00:00:30Z",
+                        "message": {
+                            "content": [{"type": "text", "text": "ok"}],
+                            "usage": {"cache_read_input_tokens": tokens},
+                        },
+                    }
+                )
+                + "\n"
+            )
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
         labels = [str(c.label) for c in table.columns.values()]
         assert "Context" in labels
-        cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "context")) for r in app.rows}
+        cells = {
+            r.session.session_id: str(table.get_cell(r.session.session_id, "context"))
+            for r in app.rows
+        }
         assert cells == {"small": "1.5k", "big": "250k"}
         width = lambda: table.columns["context"].get_render_width(table)
         before = width()
         select_header(app, "context")
         await pilot.pause()
-        assert [r.session.session_id for r in app.visible_rows()] == ["big", "small"]  # largest first
+        assert [r.session.session_id for r in app.visible_rows()] == [
+            "big",
+            "small",
+        ]  # largest first
         assert "Context v" in [str(c.label) for c in table.columns.values()]
         assert width() == before  # the sort mark doesn't widen the column
         select_header(app, "context")
         await pilot.pause()
-        assert "Context ^" in [str(c.label) for c in table.columns.values()] and width() == before
+        assert (
+            "Context ^" in [str(c.label) for c in table.columns.values()]
+            and width() == before
+        )
 
     run_ui(home, monkeypatch, steps)
 
@@ -553,21 +704,42 @@ def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
     for sid, model in (("o", "claude-opus-5-5"), ("h", "claude-haiku-4-5-20251001")):
         path = home / "projects" / "-w" / f"{sid}.jsonl"
         with path.open("a") as fh:
-            fh.write("\n" + json.dumps({"type": "assistant", "timestamp": "2026-10-01T00:00:30Z", "message": {
-                "model": model, "content": [{"type": "text", "text": "ok"}]}}) + "\n")
+            fh.write(
+                "\n"
+                + json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-10-01T00:00:30Z",
+                        "message": {
+                            "model": model,
+                            "content": [{"type": "text", "text": "ok"}],
+                        },
+                    }
+                )
+                + "\n"
+            )
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
         labels = [str(c.label) for c in table.columns.values()]
         assert labels[-2:] == ["Context", "Model"]
-        cells = {r.session.session_id: str(table.get_cell(r.session.session_id, "model")) for r in app.rows}
+        cells = {
+            r.session.session_id: str(table.get_cell(r.session.session_id, "model"))
+            for r in app.rows
+        }
         assert cells == {"o": "opus-5-5", "h": "haiku-4-5", "none": ""}
         select_header(app, "model")
-        assert [r.session.session_id for r in app.visible_rows()] == ["h", "o", "none"]  # A to Z, blanks last
+        assert [r.session.session_id for r in app.visible_rows()] == [
+            "h",
+            "o",
+            "none",
+        ]  # A to Z, blanks last
         assert "Model ^" in [str(c.label) for c in table.columns.values()]
         table.move_cursor(row=0)
         await pilot.pause()
-        assert "claude-haiku-4-5-20251001" in str(app.query_one("#detail", ui.Static).render())
+        assert "claude-haiku-4-5-20251001" in str(
+            app.query_one("#detail", ui.Static).render()
+        )
 
     run_ui(home, monkeypatch, steps)
 
@@ -579,12 +751,18 @@ def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypa
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
-        widths = lambda: {k.value: c.get_render_width(table) for k, c in table.columns.items()}
+        widths = lambda: {
+            k.value: c.get_render_width(table) for k, c in table.columns.items()
+        }
         settled = widths()
         for key in ("started", "title", "cwd", "status", "model", "context"):
             select_header(app, key)
             assert widths() == settled, key  # straight away, before the table is idle
-        for _ in ui.SORT_MODES:  # multi-column sorts, with numbered marks, don't resize either
+        for (
+            _
+        ) in (
+            ui.SORT_MODES
+        ):  # multi-column sorts, with numbered marks, don't resize either
             app.action_cycle_sort()
             assert widths() == settled
         await pilot.pause()
@@ -595,8 +773,12 @@ def test_columns_keep_their_width_through_quick_header_clicks(tmp_path, monkeypa
     run_ui(home, monkeypatch, steps)
 
 
-@pytest.mark.parametrize("gone", ["DataTable", "TitleBar", "#detail", "#group", "#search"])
-def test_late_events_and_worker_results_after_quit_are_ignored(tmp_path, monkeypatch, gone):
+@pytest.mark.parametrize(
+    "gone", ["DataTable", "TitleBar", "#detail", "#group", "#search"]
+)
+def test_late_events_and_worker_results_after_quit_are_ignored(
+    tmp_path, monkeypatch, gone
+):
     # On quit, a queued highlight or a load worker's result can arrive after the widgets
     # are removed, in either order; each of these used to raise NoMatches.
     home = make_home(tmp_path, ["a"])
@@ -605,7 +787,9 @@ def test_late_events_and_worker_results_after_quit_are_ignored(tmp_path, monkeyp
         sessions = [r.session for r in app.rows]
         await app.query_one(gone).remove()
         app.on_data_table_row_highlighted(None)
-        app.show(sessions, {"a": {"label": "decision", "pending": "?"}})  # changed: redraws
+        app.show(
+            sessions, {"a": {"label": "decision", "pending": "?"}}
+        )  # changed: redraws
         app.apply_batch({"a": {"label": "done", "pending": ""}}, ["a"], 1)
         app.set_status("Classifying…")
         app.load_finished(False)
@@ -619,7 +803,9 @@ def test_missing_widget_still_raises_while_the_app_is_running(tmp_path, monkeypa
     home = make_home(tmp_path, ["a"])
 
     async def steps(app, pilot):
-        monkeypatch.setattr(app, "update_detail", lambda: app.query_one("#no-such-widget"))
+        monkeypatch.setattr(
+            app, "update_detail", lambda: app.query_one("#no-such-widget")
+        )
         with pytest.raises(ui.NoMatches):
             app.on_data_table_row_highlighted(None)
 
@@ -628,14 +814,22 @@ def test_missing_widget_still_raises_while_the_app_is_running(tmp_path, monkeypa
 
 def test_titles_and_folders_are_shown_literally_not_as_markup(tmp_path, monkeypatch):
     home = make_home(tmp_path, ["crash", "lost"])
-    titles = {"crash": "fix the [/] closing tag", "lost": "arr[0] = x[i] and [bold]not bold"}
+    titles = {
+        "crash": "fix the [/] closing tag",
+        "lost": "arr[0] = x[i] and [bold]not bold",
+    }
     for sid, title in titles.items():
         with (home / "projects" / "-w" / f"{sid}.jsonl").open("a") as fh:
-            fh.write("\n" + json.dumps({"type": "custom-title", "customTitle": title}) + "\n")
+            fh.write(
+                "\n" + json.dumps({"type": "custom-title", "customTitle": title}) + "\n"
+            )
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
-        shown = {r.session.session_id: table.get_cell(r.session.session_id, "title") for r in app.rows}
+        shown = {
+            r.session.session_id: table.get_cell(r.session.session_id, "title")
+            for r in app.rows
+        }
         # The cell as drawn: a str cell would be parsed as markup ("[/]" raised MarkupError).
         assert {k: default_cell_formatter(v).plain for k, v in shown.items()} == titles
 
@@ -643,11 +837,15 @@ def test_titles_and_folders_are_shown_literally_not_as_markup(tmp_path, monkeypa
 
 
 def test_searching_and_filtering_keep_column_widths(tmp_path, monkeypatch):
-    home = make_home(tmp_path, ["short", "a-much-longer-session-title-that-sets-the-width"])
+    home = make_home(
+        tmp_path, ["short", "a-much-longer-session-title-that-sets-the-width"]
+    )
 
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
-        widths = lambda: {k.value: c.get_render_width(table) for k, c in table.columns.items()}
+        widths = lambda: {
+            k.value: c.get_render_width(table) for k, c in table.columns.items()
+        }
         settled = widths()
         app.query_one("#search", ui.Input).value = "short"  # hides the long title
         await pilot.pause()
@@ -663,5 +861,7 @@ def test_searching_and_filtering_keep_column_widths(tmp_path, monkeypatch):
 def test_mark_room_fits_the_widest_sort_mark(monkeypatch):
     assert ui.mark_room("title") == len(" v")  # never in a multi-column sort
     assert ui.mark_room("status") == len(" v1")
-    monkeypatch.setattr(ui, "SORT_MODES", [tuple(f"k{i}" for i in range(10)) + ("status",)])
+    monkeypatch.setattr(
+        ui, "SORT_MODES", [tuple(f"k{i}" for i in range(10)) + ("status",)]
+    )
     assert ui.mark_room("status") == len(" v11")  # 11 keys: two-digit numbers
