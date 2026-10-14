@@ -30,8 +30,8 @@ STATUS_RANK = {
 # Display labels, in rank order.
 GROUPS = {
     "running": "Running",
-    "action": "Needs your action",
-    "decision": "Needs your decision",
+    "action": "Needs action",
+    "decision": "Needs decision",
     "interrupted": "Interrupted",
     "optional": "Offered extras",
     "unclassified": "Ended (not classified)",

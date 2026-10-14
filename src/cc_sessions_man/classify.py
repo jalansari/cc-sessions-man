@@ -19,8 +19,8 @@ DEFAULT_JOBS = 16
 LABELS = {
     "done": "Done: nothing left to do",
     "optional": "Offered extras: safe to ignore",
-    "decision": "Needs your decision: Claude asked a question",
-    "action": "Needs your action: you must do something outside the session",
+    "decision": "Needs decision: Claude asked a question",
+    "action": "Needs action: you must do something outside the session",
 }
 
 SCHEMA = {
