@@ -8,6 +8,8 @@ import shlex
 import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as dist_version
 from pathlib import Path
 
 from .accounts import PATTERN_ENV
@@ -127,8 +129,38 @@ positive_float = number_arg(float, 0, inclusive=False)
 refresh_interval_arg = number_arg(float, 1, allow_zero=True)
 
 
+def package_version() -> str:
+    """The installed package's version. hatch-vcs sets it from the git tag at build
+    time, so there's nothing to update by hand.
+    """
+    try:
+        return dist_version("cc-sessions-man")
+    except PackageNotFoundError:  # run from the source without installing
+        return "unknown"
+
+
+class VersionAction(argparse.Action):
+    """--version: print the program and its version, then exit. The version is only
+    looked up when asked for, not on every start.
+    """
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, **kwargs):
+        super().__init__(
+            option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kwargs
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(f"{parser.prog} {package_version()}")  # stdout, as argparse's own does
+        parser.exit()
+
+
 def add_common_args(p: argparse.ArgumentParser) -> None:
     """Options shared by cc-sessions and cc-sessions-ui."""
+    p.add_argument(
+        "--version",
+        action=VersionAction,
+        help="show the version and exit",
+    )
     p.add_argument(
         "--no-llm",
         action="store_true",

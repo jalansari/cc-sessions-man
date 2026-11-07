@@ -594,7 +594,12 @@ Each session gets exactly one status.
   - `~/.claude/history.jsonl` per folder also shows which account typed each prompt, but isn't used.
 - **`--claude-home DIR`:** reads only that folder's sessions, following its `projects` symlink if it has one. `~` is expanded and relative paths are resolved.
   - Running checks, accounts, and the backups a delete removes still come from every folder found, since a session there may be open, or keep backups, under another account sharing its projects.
-- **Common options** (`--no-llm`, `--model`, `--batch-size`, `--jobs`, `--claude-home`): both commands share them from one definition.
+- **Common options** (`--no-llm`, `--model`, `--batch-size`, `--jobs`, `--claude-home`, `--version`): both commands share them from one definition.
+- **`--version`:** prints the command's name and the installed package's version (`cc-sessions 0.0.2`), then exits.
+  - The version comes from the package metadata, which hatch-vcs sets from the git tag at build time, so a release needs no version edit. A build from an untagged commit shows a development version, such as `0.0.3.dev1+g1a2b3c4`.
+  - Without package metadata (the source run without installing), it shows `unknown` rather than failing.
+  - In a clone without tags, hatch-vcs can't see a release, so the version is `0.1.devN+g<commit>`, where N counts commits. The PR workflow fetches the tags (`fetch-depth: 0`), as the publish workflow does, so CI builds a real version.
+  - An editable install (`uv sync`) records the version when it's installed, so it can lag behind new tags until it's reinstalled (`uv sync --reinstall-package cc-sessions-man`).
 
 ## Requirements
 

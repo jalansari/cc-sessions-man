@@ -271,6 +271,8 @@ The confirmation dialog opens with Cancel selected, so pressing Enter by mistake
 
 ## CLI options
 
+`cc-sessions-ui` takes the same options, except the ones that pick or print sessions (`-n`, `--days`, `-s`, `--pending`, `--refresh`, `--search` and `--json`), and adds `--refresh-interval`.
+
 | Option | Effect |
 |---|---|
 | `-n, --limit N` | Only the N most recent sessions |
@@ -284,8 +286,9 @@ The confirmation dialog opens with Cancel selected, so pressing Enter by mistake
 | `-j, --jobs N` | Parallel `claude` calls (default 16). They share your account's rate limits with other Claude sessions |
 | `--claude-home DIR` | Use only this Claude config directory (default: every `~/.claude*` directory, plus `$CLAUDE_CONFIG_DIR`) |
 | `--search QUERY` | AI search instead of listing: print the sessions matching QUERY, most relevant first, with a reason each (or JSON with `--json`). With `-n` or `--days`, only those sessions can match |
-| `--search-model M` | Model for AI search (default `sonnet`). Also in the UI |
-| `--search-budget USD` | Stop an AI search that costs more than USD (default 1). Also in the UI |
+| `--search-model M` | Model for AI search (default `sonnet`) |
+| `--search-budget USD` | Stop an AI search that costs more than USD (default 1) |
+| `--version` | Print the installed version and exit, for example `cc-sessions 0.0.2` |
 
 ## Several Claude config directories and accounts
 
@@ -376,6 +379,8 @@ uv build
 This creates `dist/` with `.tar.gz` and `.whl` files.
 
 The version comes from git tags (hatch-vcs): on a `v0.2.0` tag it's `0.2.0`, and between tags it's a development version such as `0.2.1.dev3+g1a2b3c4`.
+`--version` shows it. In a clone, the editable install from `uv sync` records the version when it's installed, so after new tags or commits run `uv sync --reinstall-package cc-sessions-man` to update what `--version` shows.
+A clone without tags (for example `git clone --depth 1`) can't see the releases, so its version is `0.1.devN+g<commit>`; run `git fetch --tags` to fix it.
 To release, tag the commit and push the tag, then publish a GitHub release for it:
 
 ```sh
