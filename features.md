@@ -623,7 +623,16 @@ Each session gets exactly one status.
   - Folder: home shown as `~`
   - Context
   - Model
-  - CC dir: the session's config folder, home shown as `~`
+  - CC dir: the session's config folder, home shown as `~`, in that folder's colour
+- **CC dir colours:** each config folder gets one of five colours: blue, green, magenta, cyan, lavender. Folders beyond five reuse them, underlined.
+  - Only five, because more (teal, pale aqua, violet were tried) were too close to cyan and lavender to tell apart.
+  - **Order:** `~/.claude` first, then the other folders found, in path order, then any folder the pattern didn't find (an explicit `--claude-home` elsewhere, say), last so it can't shift the others.
+  - **Stable:** the same with or without `--claude-home`, and unchanged by refreshes. Adding or removing a folder can shift the colours of the folders after it.
+  - **No reds, ambers or oranges:** those read as errors and warnings; a test checks each colour's hue. Some colours share a hue with a status colour, which only appears in the Status column.
+  - **Worked out once per scan,** and handed to the table with that scan's rows and folder lists, so a refresh that finds a new folder never colours old rows against the new list, and repaints the rows whose colour it shifts.
+  - **Dark themes:** like the status colours, the colours are fixed values chosen for dark backgrounds, and some are faint on light themes.
+  - Assigning by position rather than by a hash of the path keeps a handful of folders on distinct colours; a hash could give two folders the same one.
+  - A session with no config folder gets no colour.
 - **Context cell:** context size, right-aligned, as `0.8k`, `134k` or `1.0M`.
   - Blank when there's no usage data.
   - Coloured by band: blue (0 to under 250k), green (250k to under 500k), yellow (500k to under 800k), red (800k and above).

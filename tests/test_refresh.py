@@ -158,11 +158,11 @@ def test_r_during_a_load_is_queued_not_refused(tmp_path, monkeypatch):
     real_scan = ui.scan
     scans = []
 
-    def slow_scan(h):
+    def slow_scan(h, **kw):
         scans.append(1)
         if len(scans) == 2:
             gate.wait(5)  # the first refresh is slow
-        return real_scan(h)
+        return real_scan(h, **kw)
 
     monkeypatch.setattr(ui, "scan", slow_scan)
 
@@ -279,9 +279,9 @@ def hold_next_scan(monkeypatch):
     real_scan = ui.scan
     count = []
 
-    def scan(h):
+    def scan(h, **kw):
         count.append(1)
-        result = real_scan(h)  # read the disk *before* the user's change...
+        result = real_scan(h, **kw)  # read the disk *before* the user's change...
         if len(count) == 2:
             started.set()
             release.wait(5)  # ...and only hand it over afterwards
@@ -330,8 +330,8 @@ def test_marks_survive_a_scan_that_misses_a_session(tmp_path, monkeypatch):
     real_scan = ui.scan
     skip = {"bbb"}
 
-    def flaky_scan(h):
-        return [s for s in real_scan(h) if s.session_id not in skip]
+    def flaky_scan(h, **kw):
+        return [s for s in real_scan(h, **kw) if s.session_id not in skip]
 
     async def steps(app, pilot):
         app.marked = {"aaa", "bbb"}

@@ -100,13 +100,16 @@ def is_config_dir(p: str) -> bool:
     )
 
 
-def with_discovered(dirs: list[ConfigDir]) -> list[ConfigDir]:
-    """`dirs` plus every other config folder found: what running checks and deletes
-    look through, since a session read from one folder may be open, or keep backups,
-    under another sharing its projects.
+def with_discovered(
+    dirs: list[ConfigDir], found: list[ConfigDir] | None = None
+) -> list[ConfigDir]:
+    """`dirs` plus every other config folder found (`found`, or discovered now): what
+    running checks and deletes look through, since a session read from one folder may
+    be open, or keep backups, under another sharing its projects.
     """
     seen = {d.path for d in dirs}
-    return dirs + [d for d in discover() if d.path not in seen]
+    found = discover() if found is None else found
+    return dirs + [d for d in found if d.path not in seen]
 
 
 def project_roots(dirs: list[ConfigDir]) -> list[tuple[Path, ConfigDir]]:

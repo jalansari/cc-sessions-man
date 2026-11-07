@@ -1,7 +1,9 @@
 import asyncio
+import colorsys
 import json
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -287,3 +289,105 @@ def test_a_changed_login_is_picked_up(base, machine):
     assert accounts.account_of(machine["ent"].resolve()) == "E"
     settings.write_text(json.dumps({"oauthAccount": {"accountUuid": "E-new-login"}}))
     assert accounts.account_of(machine["ent"].resolve()) == "E-new-login"
+
+
+def test_each_config_folder_has_its_own_colour(base, machine):
+    transcript(machine["default"], "s1")
+    transcript(machine["default"], "s2", owners=["J"])
+    transcript(machine["ent"], "s3")
+    seen = []
+
+    def colours(app):
+        table = app.query_one(ui.DataTable)
+        return {
+            sid.value: str(table.get_row(sid)[-1].style) for sid in table.rows.keys()
+        }
+
+    async def go():
+        app = ui.SessionsApp(None, "haiku", use_llm=False)
+        async with app.run_test(size=(200, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            seen.append(colours(app))
+            app.action_refresh()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            seen.append(colours(app))
+
+    asyncio.run(go())
+    first, after_refresh = seen
+    # Path order: .claude, .claude_api, .claude_ent, .claude_work.
+    assert first == {
+        "s1": ui.CONFIG_DIR_COLOURS[0],
+        "s3": ui.CONFIG_DIR_COLOURS[2],
+        "s2": ui.CONFIG_DIR_COLOURS[3],
+    }
+    assert after_refresh == first
+
+
+def test_colour_order_starts_with_the_default_folder(base, machine):
+    c = ui.CONFIG_DIR_COLOURS
+    default = str(machine["default"].resolve())
+    found = [machine["default"].resolve(), base.parent / "a-sorts-first"]
+    # Not found by the pattern (an outside --claude-home, say): after the found ones.
+    colours = ui.config_dir_colours(found, ["/zz/outside", "/0/outside", ""])
+    assert colours == {
+        default: c[0],
+        str(base.parent / "a-sorts-first"): c[1],
+        "/0/outside": c[2],
+        "/zz/outside": c[3],
+    }
+    assert "" not in colours  # no folder, no colour
+
+
+def test_no_red_amber_or_orange_folder_colours():
+    for colour in ui.CONFIG_DIR_COLOURS:
+        r, g, b = (int(colour[i : i + 2], 16) / 255 for i in (1, 3, 5))
+        hue = colorsys.rgb_to_hsv(r, g, b)[0] * 360
+        assert 60 <= hue <= 340, f"{colour} is red, orange or amber ({hue:.0f})"
+
+
+def test_folders_past_the_palette_reuse_it_underlined():
+    c = ui.CONFIG_DIR_COLOURS
+    found = [Path(f"/x/{i}") for i in range(len(c) + 1)]
+    colours = ui.config_dir_colours(found, [])
+    assert colours["/x/0"] == c[0]
+    assert colours[f"/x/{len(c)}"] == c[0] + " underline"
+
+
+def test_a_new_folder_repaints_the_colours_it_shifts(base, machine):
+    transcript(machine["ent"], "s3")
+    seen = []
+
+    async def go():
+        app = ui.SessionsApp(None, "haiku", use_llm=False)
+        async with app.run_test(size=(200, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            table = app.query_one(ui.DataTable)
+            seen.append(str(table.get_row("s3")[-1].style))
+            config(base, ".claude_b", "B")  # sorts before .claude_ent
+            app.action_refresh()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            seen.append(str(table.get_row("s3")[-1].style))
+
+    asyncio.run(go())
+    # .claude, .claude_api, .claude_ent ... then .claude, .claude_api, .claude_b, ...
+    assert seen == [ui.CONFIG_DIR_COLOURS[2], ui.CONFIG_DIR_COLOURS[3]]
+
+
+def test_colours_are_the_same_with_claude_home(base, machine):
+    transcript(machine["ent"], "s3")
+    seen = []
+
+    async def go():
+        app = ui.SessionsApp(machine["ent"], "haiku", use_llm=False)
+        async with app.run_test(size=(200, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            table = app.query_one(ui.DataTable)
+            seen.append(str(table.get_row("s3")[-1].style))
+
+    asyncio.run(go())
+    assert seen == [ui.CONFIG_DIR_COLOURS[2]]  # .claude, .claude_api, .claude_ent

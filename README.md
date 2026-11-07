@@ -134,6 +134,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
   Subagents' models aren't shown. After a `/model` switch, it changes once Claude next replies. The details panel shows the full model ID.
   It's blank for sessions with no reply yet.
 - **CC dir** is the Claude config directory the session belongs to, which is the account it resumes with. See [Several Claude config directories and accounts](#several-claude-config-directories-and-accounts).
+  Each directory has its own colour, so sessions from different accounts are easy to tell apart.
 - Folders longer than 40 characters keep their end, for example `…/my-app/.claude/skills/changelog-writer`. The details panel shows the full path.
 
 - The list appears as soon as the transcripts are scanned, using cached labels.

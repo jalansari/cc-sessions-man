@@ -357,7 +357,11 @@ def scan_cache_path(homes: Homes | None) -> Path:
     )  # CACHE_DIR looked up now, so tests can redirect it
 
 
-def scan(homes: Homes | None = None, cache_path=_DEFAULT) -> list[Session]:
+def scan(
+    homes: Homes | None = None,
+    cache_path=_DEFAULT,
+    known: list[ConfigDir] | None = None,
+) -> list[Session]:
     """All main-thread sessions, newest first. Subagent transcripts are skipped.
 
     `homes` is one config folder, several, or None for every one found. Each real
@@ -368,14 +372,15 @@ def scan(homes: Homes | None = None, cache_path=_DEFAULT) -> list[Session]:
 
     Parsed transcripts are cached by path (default: one file per set of projects
     folders), and only re-read when their size or mtime changes. Pass cache_path=None
-    to parse everything.
+    to parse everything. `known` is every config folder found, if the caller has
+    already looked.
     """
     dirs = config_dirs(homes)
     if cache_path is _DEFAULT:
         cache_path = scan_cache_path(dirs)
     # Running sessions and accounts come from every folder found, even when only one
     # is read: a session in its projects may be open under another account.
-    known = with_discovered(dirs)
+    known = with_discovered(dirs) if known is None else known
     live = live_sessions(known)
     old = _load_scan_cache(cache_path) if cache_path else {}
     entries = {}
