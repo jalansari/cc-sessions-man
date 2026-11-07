@@ -380,6 +380,7 @@ This creates `dist/` with `.tar.gz` and `.whl` files.
 
 The version comes from git tags (hatch-vcs): on a `v0.2.0` tag it's `0.2.0`, and between tags it's a development version such as `0.2.1.dev3+g1a2b3c4`.
 `--version` shows it. In a clone, the editable install from `uv sync` records the version when it's installed, so after new tags or commits run `uv sync --reinstall-package cc-sessions-man` to update what `--version` shows.
+A clone without tags (for example `git clone --depth 1`) can't see the releases, so its version is `0.1.devN+g<commit>`; run `git fetch --tags` to fix it.
 To release, tag the commit and push the tag, then publish a GitHub release for it:
 
 ```sh

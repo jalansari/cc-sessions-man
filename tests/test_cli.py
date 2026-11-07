@@ -192,12 +192,29 @@ def test_version_without_package_metadata_is_unknown(main, prog, monkeypatch, ca
     assert capsys.readouterr().out == f"{prog} unknown\n"
 
 
+# The versions hatch-vcs makes: a release (0.0.2), or a development build after one
+# (0.0.3.dev1+g1a2b3c4), with .d<date> when built with uncommitted changes. A clone
+# without tags gives 0.1.devN.
+VERSION = r"\d+\.\d+(\.\d+)?(\.dev\d+)?(\+g[0-9a-f]+(\.d\d{8})?)?"
+
+
+@pytest.mark.parametrize(
+    "good",
+    ["0.0.2", "0.0.3.dev1+g1a2b3c4", "0.1.dev5+g1a2b3c4.d20261107", "1.2"],
+)
+def test_the_version_pattern_takes_what_hatch_vcs_makes(good):
+    assert re.fullmatch(VERSION, good)
+
+
+@pytest.mark.parametrize("bad", ["unknown", "0.0garbage", "v0.0.2", "0.0.2 x", ""])
+def test_the_version_pattern_rejects_anything_else(bad):
+    assert not re.fullmatch(VERSION, bad)
+
+
 def test_version_is_a_real_version_number(capsys):
-    """The installed version, as hatch-vcs built it from the git tags: 0.0.2, or
-    0.1.dev1+g1a2b3c4 in a clone without tags, such as CI's shallow checkout.
-    """
+    """The installed version, as hatch-vcs built it from the git tags."""
     if cli.package_version() == "unknown":
         pytest.skip("cc-sessions-man isn't installed")
     with pytest.raises(SystemExit):
         cli.main(["--version"])
-    assert re.fullmatch(r"cc-sessions \d+(\.\d+)+\S*\n", capsys.readouterr().out)
+    assert re.fullmatch(f"cc-sessions {VERSION}\n", capsys.readouterr().out)
