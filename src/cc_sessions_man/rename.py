@@ -1,12 +1,11 @@
 """Rename a session the way Claude Code's /rename does."""
 
 import json
-from pathlib import Path
 
-from .scan import CLAUDE_HOME, Session, live_sessions
+from .scan import CLAUDE_HOME, Homes, Session, live_sessions
 
 
-def rename_session(s: Session, title: str, home: Path = CLAUDE_HOME) -> None:
+def rename_session(s: Session, title: str, homes: Homes = CLAUDE_HOME) -> None:
     """Set a session's title. Writes both places Claude Code reads it from:
 
     - a `custom-title` entry appended to the transcript (the last one wins), and
@@ -15,7 +14,7 @@ def rename_session(s: Session, title: str, home: Path = CLAUDE_HOME) -> None:
     title = " ".join(title.split())
     if not title:
         raise ValueError("title is empty")
-    if s.session_id in live_sessions(home):  # checked now, not from the scan
+    if s.session_id in live_sessions(homes):  # checked now, not from the scan
         # The live process owns the transcript and may write its own title back.
         raise ValueError(f"session {s.session_id} is still running; use /rename in it")
 

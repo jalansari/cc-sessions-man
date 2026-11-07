@@ -53,7 +53,7 @@ Each feature lists what it must do. "UI" means the `cc-sessions-ui` terminal app
 
 ## Finding sessions
 
-- **Source:** every main-thread transcript at `<claude home>/projects/*/<session-id>.jsonl`.
+- **Source:** every main-thread transcript at `<projects folder>/*/<session-id>.jsonl`, for each real projects folder of the config folders found (see [Claude config folder](#claude-config-folder)).
 - **Skipped:** subagent transcripts (those in subfolders).
 - **Recorded** for each session:
   - session ID
@@ -131,7 +131,7 @@ Decide these states from the transcript's structure alone, without a model:
 
 ## Running sessions
 
-- **Running:** `<claude home>/sessions/<pid>.json` names the session and that process is alive.
+- **Running:** `<config folder>/sessions/<pid>.json`, in any of the config folders, names the session and that process is alive. The folder it's in is the one the session is running under.
 - **Process owned by another user:** counts as alive (the liveness check returns "permission denied").
 - **Reused PIDs:** the session isn't running if the start time recorded in the session file (`procStart`) differs from the live process's start time (field 22 of `/proc/<pid>/stat`).
   - Without `/proc`: fall back to the PID check alone.
@@ -238,8 +238,9 @@ Each session gets exactly one status.
 ## Scan cache
 
 - **File:** `~/.cache/cc-sessions-man/scan-<hash>.json`, holding a summary of each transcript.
-  - One file per Claude config folder.
-  - `<hash>`: of the folder's resolved path.
+  - One file per set of projects folders read.
+  - `<hash>`: of their resolved paths.
+  - Holds each transcript's account; the config folder is worked out on every scan, so it follows logins and new folders.
 - **Re-read:** a transcript only when its size or modification time changes.
 - **Speed:**
   - cached startup: about 0.2-0.3 s
@@ -335,7 +336,7 @@ Each session gets exactly one status.
 
 **The call** (`search.py`): one `claude -p`.
 
-- **Flags:** `--tools Read,Grep,Glob`, `--add-dir <claude home>/projects`, `--no-session-persistence`, `--strict-mcp-config` and `--setting-sources ""`.
+- **Flags:** `--tools Read,Grep,Glob`, `--add-dir <projects folder>` for each projects folder read, `--no-session-persistence`, `--strict-mcp-config` and `--setting-sources ""`.
 - **Folder:** run from an empty temporary folder.
 - **Shared helper:** classification and search build this command with the same helper (`headless.py`), so they stay equally isolated.
 - **Reach:** the tools can't reach outside the projects folder. In `-p` mode `claude` refuses Read, Grep and Glob elsewhere (checked against canary files in `/tmp` and in home).
@@ -439,7 +440,7 @@ Each session gets exactly one status.
   - **No double opening:** for a minute after `o`, Enter and `o` refuse that session ("just opened in a new terminal"), because Claude only counts as running once it has started and recorded its process.
   - **Rescan:** about five seconds after opening, a quiet rescan (like the automatic refresh) moves the session to Running. It skips the model while classification is paused, and doesn't run if a scan is already running.
   - **Not yet:** macOS, and a setting for a terminal command with its own flags.
-- **Non-default config folder:** passed on through `CLAUDE_CONFIG_DIR`, as an absolute path.
+- **Config folder:** the session's own (its CC dir), passed on through `CLAUDE_CONFIG_DIR` as an absolute path when it isn't `~/.claude`. This applies to Enter, `o`, and the CLI's resume commands.
 - **Refused** (Enter and `o`):
   - a running session ("still open in another terminal"), checked again at the moment of opening, not only from the last scan;
   - a session whose folder no longer exists, with a notice naming the folder (never run `claude` from the wrong folder).
@@ -572,10 +573,27 @@ Each session gets exactly one status.
 
 ## Claude config folder
 
-- **Folder:** `$CLAUDE_CONFIG_DIR` if it's set and not empty; otherwise `~/.claude`.
-- **Paths:** `~` is expanded and relative paths are resolved to absolute.
-- **`--claude-home DIR`:** overrides the folder for one run.
-- **`--help`:** shows the folder in use.
+- **Discovery:** every folder matching `~/.claude*` (or the glob in `CC_SESSIONS_MAN_CLAUDE_DIRS_PATTERN`, with `~` expanded), plus `$CLAUDE_CONFIG_DIR` if set.
+  - Files matching the pattern, such as `~/.claude.json`, are skipped, and so are folders other tools named `~/.claude-something`: a matched folder only counts if it has a `projects` folder or a settings file. A folder named in `CLAUDE_CONFIG_DIR` always counts.
+  - Symlinks are resolved, so a folder reached twice counts once.
+  - Found again on every scan (startup, `r`, auto refresh), so new folders show up without a restart.
+- **Account:** each folder's claude.ai account is `oauthAccount.accountUuid` in its settings file.
+  - The default `~/.claude` keeps its settings beside it, in `~/.claude.json`; any other folder keeps them inside, in `<folder>/.claude.json`. `~/.claude` falls back to `~/.claude/.claude.json`, which Claude Code uses when `CLAUDE_CONFIG_DIR` names `~/.claude` explicitly.
+  - Read again only when the settings file's size or modification time changes, so auto refreshes don't re-read it, but a new login is picked up.
+  - A folder logged in with an API key has no account.
+- **Projects:** each real projects folder is read once.
+  - A folder whose `projects` is a symlink isn't read for itself; the transcripts belong to the folder that really holds them.
+  - A projects folder reached only through symlinks belongs to the first folder linking to it.
+  - A folder without `projects` has no sessions of its own, but its running sessions still count.
+- **A session's config folder ("CC dir"):**
+  1. running: the folder it's running under;
+  2. otherwise, the folder logged in with the account in the transcript's last `session-owner` entry (written each time a session starts or resumes, by newer Claude Code versions), if that folder shares the transcript's projects folder. A folder that can't see the transcript couldn't resume it;
+  3. otherwise, including older sessions and accounts not on this machine: the folder holding its projects folder.
+  - Only `session-owner` entries count; other entries that carry an account ID are ignored.
+- **The same session in two projects folders** (for example a copied config folder kept as a backup): listed once, from the most recently written transcript.
+  - `~/.claude/history.jsonl` per folder also shows which account typed each prompt, but isn't used.
+- **`--claude-home DIR`:** reads only that folder's sessions, following its `projects` symlink if it has one. `~` is expanded and relative paths are resolved.
+  - Running checks, accounts, and the backups a delete removes still come from every folder found, since a session there may be open, or keep backups, under another account sharing its projects.
 - **Common options** (`--no-llm`, `--model`, `--batch-size`, `--jobs`, `--claude-home`): both commands share them from one definition.
 
 ## Requirements
@@ -605,6 +623,16 @@ Each session gets exactly one status.
   - Folder: home shown as `~`
   - Context
   - Model
+  - CC dir: the session's config folder, home shown as `~`, in that folder's colour
+- **CC dir colours:** each config folder gets one of five colours: blue, green, magenta, cyan, lavender. Folders beyond five reuse them, underlined.
+  - Only five, because more (teal, pale aqua, violet were tried) were too close to cyan and lavender to tell apart.
+  - **Order:** `~/.claude` first, then the other folders found, in path order, then any folder the pattern didn't find (an explicit `--claude-home` elsewhere, say), last so it can't shift the others.
+  - **Stable:** the same with or without `--claude-home`, and unchanged by refreshes. Adding or removing a folder can shift the colours of the folders after it.
+  - **No reds, ambers or oranges:** those read as errors and warnings; a test checks each colour's hue. Some colours share a hue with a status colour, which only appears in the Status column.
+  - **Worked out once per scan,** and handed to the table with that scan's rows and folder lists, so a refresh that finds a new folder never colours old rows against the new list, and repaints the rows whose colour it shifts.
+  - **Dark themes:** like the status colours, the colours are fixed values chosen for dark backgrounds, and some are faint on light themes.
+  - Assigning by position rather than by a hash of the path keeps a handful of folders on distinct colours; a hash could give two folders the same one.
+  - A session with no config folder gets no colour.
 - **Context cell:** context size, right-aligned, as `0.8k`, `134k` or `1.0M`.
   - Blank when there's no usage data.
   - Coloured by band: blue (0 to under 250k), green (250k to under 500k), yellow (500k to under 800k), red (800k and above).

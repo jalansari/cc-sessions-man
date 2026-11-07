@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .scan import CLAUDE_HOME, Session, claude_env
+from .scan import Session, claude_env, session_home
 
 # Run in the new terminal: resume in the session's folder, then stay at a shell there.
 # The folder and the command come in as arguments, so nothing needs quoting.
@@ -34,13 +34,14 @@ class NoTerminal(RuntimeError):
     """No way to open a terminal window was found."""
 
 
-def resume_command(s: Session, claude: str, home: Path = CLAUDE_HOME) -> list[str]:
-    """The command the new terminal runs.
+def resume_command(s: Session, claude: str, home: Path | None = None) -> list[str]:
+    """The command the new terminal runs, with the config folder `home` (default: the
+    one the session belongs to).
 
     CLAUDE_CONFIG_DIR is set (or cleared) in the command itself: a terminal that is
     already running may open the window from its own process, with its own environment.
     """
-    env = claude_env(home)
+    env = claude_env(home or session_home(s))
     if "CLAUDE_CONFIG_DIR" in env:
         config = ["env", f"CLAUDE_CONFIG_DIR={env['CLAUDE_CONFIG_DIR']}"]
     else:
@@ -73,7 +74,7 @@ def with_e(terminal: list[str], command: list[str]) -> list[str]:
     return [*terminal, "-e", *command]
 
 
-def open_in_terminal(s: Session, home: Path = CLAUDE_HOME) -> None:
+def open_in_terminal(s: Session, home: Path | None = None) -> None:
     """Start a new terminal window resuming `s`.
 
     The terminal runs in its own session, so quitting the UI leaves it open.

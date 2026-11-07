@@ -10,17 +10,19 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .accounts import PATTERN_ENV
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .scan import (
     CACHE_DIR,
-    CLAUDE_HOME,
     DEFAULT_CLAUDE_HOME,
     MID_TASK,
     NO_REPLY,
     RUNNING,
     Session,
+    config_dirs,
     home_arg,
     scan,
+    session_home,
 )
 from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, search
 
@@ -153,9 +155,10 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--claude-home",
         type=home_arg,
-        default=CLAUDE_HOME,
-        help="Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; now "
-        f"{short_path(str(CLAUDE_HOME))})",
+        default=None,
+        metavar="DIR",
+        help="only this Claude config dir (default: every folder matching "
+        f"${PATTERN_ENV}, or ~/.claude*, plus $CLAUDE_CONFIG_DIR)",
     )
 
 
@@ -225,7 +228,7 @@ def print_search(args, sessions: list[Session]) -> int:
             sessions,
             args.search,
             args.search_model,
-            args.claude_home,
+            args.config_dirs,
             args.search_budget,
         )
     except (RuntimeError, ValueError) as exc:
@@ -243,7 +246,8 @@ def print_search(args, sessions: list[Session]) -> int:
                         "cwd": s.cwd,
                         "last_activity": s.last_timestamp,
                         "reason": reason,
-                        "resume": resume_command(args.claude_home, s.session_id, s.cwd),
+                        "config_dir": s.config_dir,
+                        "resume": resume_command(session_home(s), s.session_id, s.cwd),
                     }
                     for s, reason in found
                 ],
@@ -266,7 +270,8 @@ def print_search(args, sessions: list[Session]) -> int:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    sessions = scan(args.claude_home)
+    args.config_dirs = config_dirs(args.claude_home)  # found once, for search too
+    sessions = scan(args.config_dirs)
     if args.days is not None:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=args.days)).isoformat()
         sessions = [s for s in sessions if s.last_timestamp >= cutoff[:19]]
@@ -329,7 +334,8 @@ def main(argv=None) -> int:
                         "detail": d,
                         "context_tokens": s.context_tokens,
                         "model": s.model,
-                        "resume": resume_command(args.claude_home, s.session_id, s.cwd),
+                        "config_dir": s.config_dir,
+                        "resume": resume_command(session_home(s), s.session_id, s.cwd),
                     }
                     for g, s, d in rows
                 ],
@@ -346,7 +352,7 @@ def main(argv=None) -> int:
         for s, d in members:
             print(
                 f"{s.last_timestamp[:16].replace('T', ' ')}  {s.session_id}  "
-                f"{short_path(s.cwd)}"
+                f"{short_path(s.cwd)}  [{short_path(s.config_dir)}]"
             )
             print(f"    {s.title}")
             if d:
@@ -354,8 +360,10 @@ def main(argv=None) -> int:
     counts = Counter(g for g, _, _ in rows)
     print("\n" + ", ".join(f"{GROUPS[g]}: {counts[g]}" for g in GROUPS if counts[g]))
     print(
-        f"Resume one with: cd <dir> && {config_prefix(args.claude_home)}"
-        "claude --resume <session-id>"
+        "Resume one with: cd <dir> && CLAUDE_CONFIG_DIR=<CC dir> claude --resume "
+        "<session-id>  (the CC dir is in [brackets]. For ~/.claude, leave "
+        "CLAUDE_CONFIG_DIR unset instead: setting it to ~/.claude makes claude use "
+        "a different settings file.)"
     )
     return 0
 

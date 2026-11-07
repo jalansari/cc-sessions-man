@@ -27,6 +27,7 @@ from textual.screen import ModalScreen
 from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
+from . import accounts
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .cli import (
     CACHE_PATH,
@@ -44,7 +45,15 @@ from .headless import stop
 from .move import move_session
 from .paths import Completer, problem_span, to_path
 from .rename import rename_session
-from .scan import Session, claude_env, live_sessions, parse_transcript, scan
+from .scan import (
+    Session,
+    claude_env,
+    config_dirs,
+    live_sessions,
+    parse_transcript,
+    scan,
+    session_home,
+)
 from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
 from .terminal import open_in_terminal
 
@@ -57,6 +66,33 @@ OPEN_GUARD = 60.0  # seconds
 
 # The sort mark in a column heading, coloured so it stands apart from the name.
 SORT_MARK_STYLE = "bold #61afef"
+
+# One colour per config folder in the CC dir column. Only as many as stay easy to tell
+# apart; folders beyond that reuse them underlined. No reds, ambers or oranges: those
+# read as errors and warnings.
+CONFIG_DIR_COLOURS = [
+    "#7aa2f7",  # blue
+    "#9ece6a",  # green
+    "#ff79c6",  # magenta
+    "#2ac3de",  # cyan
+    "#bb9af7",  # lavender
+]
+
+
+def config_dir_colours(found: list[Path], others: list[str]) -> dict[str, str]:
+    """A colour per config folder: ~/.claude first, then the other folders found, in
+    path order, then any others (say, an explicit --claude-home the pattern doesn't
+    match), last so they can't shift the found folders' colours.
+    """
+    default = str(accounts.DEFAULT_CLAUDE_HOME.resolve())
+    order = sorted({str(p) for p in found}, key=lambda p: (p != default, p))
+    order += sorted(set(others) - set(order) - {""})
+    n = len(CONFIG_DIR_COLOURS)
+    return {
+        p: CONFIG_DIR_COLOURS[i % n] + (" underline" if i // n % 2 else "")
+        for i, p in enumerate(order)
+    }
+
 
 GROUP_STYLE = {
     "running": "bold #4ec96b",
@@ -77,6 +113,7 @@ COLUMNS = [
     ("cwd", "Folder"),
     ("context", "Context"),
     ("model", "Model"),
+    ("config", "CC dir"),
 ]
 
 # How each column sorts: key function and whether it runs descending by default.
@@ -91,6 +128,7 @@ SORT_KEYS = {
         lambda r: (not r.session.model, short_model(r.session.model)),
         False,
     ),  # A to Z, blanks last
+    "config": (lambda r: r.session.config_dir, False),
 }
 
 # The orders the s key cycles through: (primary, secondary, tertiary).
@@ -120,6 +158,7 @@ COLUMN_NAMES = {
     "cwd": "folder",
     "context": "context size",
     "model": "model",
+    "config": "CC dir",
 }
 TITLE_MAX = 50
 FOLDER_MAX = 40
@@ -558,7 +597,7 @@ class SessionsApp(App[Session | None]):
 
     def __init__(
         self,
-        claude_home: Path,
+        claude_home: Path | None,
         model: str,
         use_llm: bool,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -597,7 +636,16 @@ class SessionsApp(App[Session | None]):
         self.batch_size = batch_size
         self.jobs = jobs
         self.classifying: set[str] = set()  # session IDs queued for the model
+        # An explicit --claude-home, or None to use every config folder found. The
+        # folders are found again on each scan, so new ones show up on refresh.
         self.claude_home = claude_home
+        self.config_dirs = config_dirs(claude_home)
+        # Every config folder found as of the rows shown: for running checks and
+        # deletes. Both are replaced together with the rows, on the main thread.
+        self.known: list | None = None
+        # Config folder -> its CC dir colour. Worked out with each scan, and handed to
+        # the main thread with that scan's rows.
+        self.dir_colours: dict[str, str] = {}
         self.model = model
         self.use_llm = use_llm
         self.cache = Cache(CACHE_PATH)
@@ -700,7 +748,15 @@ class SessionsApp(App[Session | None]):
     ) -> bool | None:
         if not quiet:  # auto refreshes don't flash "Scanning…" every interval
             self.call_from_thread(self.set_status, "Scanning transcripts…")
-        sessions = scan(self.claude_home)
+        # Found once per scan: what's read, checked and coloured.
+        found = accounts.discover()
+        dirs = found if self.claude_home is None else config_dirs(self.claude_home)
+        known = accounts.with_discovered(dirs, found)
+        sessions = scan(dirs, known=known)
+        colours = config_dir_colours(
+            [d.path for d in found],
+            [s.config_dir for s in sessions] + [str(d.path) for d in dirs],
+        )
         # One split, used both to mark rows "Classifying…" and to choose what to send.
         cached, todo = self.cache.partition(sessions)
         send = todo if classify_now else []
@@ -716,7 +772,13 @@ class SessionsApp(App[Session | None]):
         # Show the list straight away; unclassified rows fill in as batches come back.
         # The classifying set is handed to the main thread with it, which owns that
         # state.
-        self.call_from_thread(self.show, sessions, labels, {s.session_id for s in send})
+        self.call_from_thread(
+            self.show,
+            sessions,
+            labels,
+            {s.session_id for s in send},
+            (dirs, known, colours),
+        )
         if not send:
             return None
         self.call_from_thread(
@@ -792,7 +854,13 @@ class SessionsApp(App[Session | None]):
         sessions: list[Session],
         labels: dict[str, dict],
         classifying: set[str] | None = None,
+        folders: tuple[list, list, dict[str, str]] | None = None,
     ) -> None:
+        """`folders`: the scan's config folders (read, and all found) and their
+        colours, taken with its rows so actions and colours match what's shown.
+        """
+        if folders is not None:
+            self.config_dirs, self.known, self.dir_colours = folders
         # The scan may predate a delete, rename or move made while it ran: re-apply
         # those.
         # A scan during a move can see the transcript in both folders; keep one.
@@ -827,6 +895,7 @@ class SessionsApp(App[Session | None]):
                     r.session.state,
                     r.session.live_status,
                     r.session.title,
+                    r.session.config_dir,
                     r.group,
                     r.detail,
                 )
@@ -834,6 +903,7 @@ class SessionsApp(App[Session | None]):
             ),
             frozenset(self.classifying),
             frozenset(self.marked),
+            tuple(sorted(self.dir_colours.items())),
         )
         if signature == self.shown_signature:
             return  # nothing changed: don't rebuild (and jump) the table
@@ -929,6 +999,9 @@ class SessionsApp(App[Session | None]):
                 justify="right",
             ),
             Text(short_model(s.model)),
+            Text(
+                short_path(s.config_dir), style=self.dir_colours.get(s.config_dir, "")
+            ),
         )
 
     def render_table(self) -> None:
@@ -1048,6 +1121,15 @@ class SessionsApp(App[Session | None]):
     def on_data_table_row_selected(self, _event) -> None:
         self.action_resume()
 
+    def known_dirs(self) -> list:
+        """Every config folder found, for running checks and deletes, even with an
+        explicit --claude-home: a session may be open, or keep backups, under another
+        account sharing its projects.
+        """
+        if self.known is None:  # before the first scan is shown
+            return accounts.with_discovered(self.config_dirs)
+        return self.known
+
     def resumable(self) -> Session | None:
         """The selected session, if it can be resumed; otherwise None, with a notice."""
         r = self.current_row()
@@ -1055,7 +1137,7 @@ class SessionsApp(App[Session | None]):
             return None
         # Checked now, not only from the scan: it may have been opened since.
         if r.group == "running" or r.session.session_id in live_sessions(
-            self.claude_home
+            self.known_dirs()
         ):
             self.notify(
                 "That session is still open in another terminal.", severity="warning"
@@ -1089,7 +1171,7 @@ class SessionsApp(App[Session | None]):
         if not (s := self.resumable()):
             return
         try:
-            open_in_terminal(s, self.claude_home)
+            open_in_terminal(s)
         except (OSError, RuntimeError) as exc:
             self.notify(
                 str(exc), title="Can't open a terminal", severity="error", markup=False
@@ -1132,7 +1214,7 @@ class SessionsApp(App[Session | None]):
         r = self.current_row()
         if r is None:
             return
-        if r.session.session_id in live_sessions(self.claude_home):
+        if r.session.session_id in live_sessions(self.known_dirs()):
             self.notify(
                 "That session is still open; use /rename in it.", severity="warning"
             )
@@ -1147,7 +1229,7 @@ class SessionsApp(App[Session | None]):
     def apply_rename(self, r: Row, title: str) -> None:
         s = r.session
         try:
-            rename_session(s, title, self.claude_home)
+            rename_session(s, title, self.known_dirs())
         except Exception as exc:
             self.notify(str(exc), title="Rename failed", severity="error")
             return
@@ -1181,7 +1263,7 @@ class SessionsApp(App[Session | None]):
         r = self.current_row()
         if r is None:
             return
-        if r.session.session_id in live_sessions(self.claude_home):
+        if r.session.session_id in live_sessions(self.known_dirs()):
             self.notify(
                 "That session is still open; exit it first.", severity="warning"
             )
@@ -1202,7 +1284,7 @@ class SessionsApp(App[Session | None]):
         s = r.session
         label = self.cache.get(s)
         try:
-            path = move_session(s, dest, self.claude_home)
+            path = move_session(s, dest, self.known_dirs())
         except Exception as exc:
             self.notify(str(exc), title="Move failed", severity="error")
             return
@@ -1244,7 +1326,7 @@ class SessionsApp(App[Session | None]):
             r = self.current_row()
             targets = [r.session] if r else []
         live = live_sessions(
-            self.claude_home
+            self.known_dirs()
         )  # re-check: one may have been resumed since the scan
         running = [s for s in targets if s.session_id in live]
         targets = [s for s in targets if s.session_id not in live]
@@ -1265,7 +1347,7 @@ class SessionsApp(App[Session | None]):
         deleted, failed, leftovers = set(), [], []
         for s in targets:
             try:
-                trash_session(s, self.claude_home)
+                trash_session(s, self.known_dirs())
             except Exception as exc:
                 if s.path.exists():
                     failed.append(f"{s.session_id[:8]}: {exc}")
@@ -1432,7 +1514,7 @@ class SessionsApp(App[Session | None]):
                 sessions,
                 query,
                 self.search_model,
-                self.claude_home,
+                self.config_dirs,
                 self.search_budget,
                 started,
             )
@@ -1570,7 +1652,9 @@ def main(argv=None) -> int:
     os.chdir(session.cwd)
     print(f"Resuming {session.session_id} in {short_path(os.getcwd())}…")
     os.execve(
-        claude, [claude, "--resume", session.session_id], claude_env(args.claude_home)
+        claude,
+        [claude, "--resume", session.session_id],
+        claude_env(session_home(session)),
     )
 
 
