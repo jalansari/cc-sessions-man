@@ -193,9 +193,11 @@ def test_version_without_package_metadata_is_unknown(main, prog, monkeypatch, ca
 
 
 def test_version_is_a_real_version_number(capsys):
-    """The installed version, as hatch-vcs built it from the git tags."""
+    """The installed version, as hatch-vcs built it from the git tags: 0.0.2, or
+    0.1.dev1+g1a2b3c4 in a clone without tags, such as CI's shallow checkout.
+    """
     if cli.package_version() == "unknown":
         pytest.skip("cc-sessions-man isn't installed")
     with pytest.raises(SystemExit):
         cli.main(["--version"])
-    assert re.fullmatch(r"cc-sessions \d+\.\d+\.\d+\S*\n", capsys.readouterr().out)
+    assert re.fullmatch(r"cc-sessions \d+(\.\d+)+\S*\n", capsys.readouterr().out)
