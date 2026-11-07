@@ -56,7 +56,8 @@ def test_search_keeps_the_models_order_and_drops_unknown_and_repeated_ids(
         ("aaa", "also"),
     ]
     assert result.unknown == ["made-up"] and result.cost_usd == 0.12
-    assert calls[0]["projects"] == home / "projects" and calls[0]["budget"] == 0.5
+    assert calls[0]["projects"] == [(home / "projects").resolve()]
+    assert calls[0]["budget"] == 0.5
     assert calls[0]["prompt"].startswith("Query: first use\n")
     with pytest.raises(ValueError):
         search(sessions, "   ", "sonnet", home)

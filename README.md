@@ -16,7 +16,7 @@ Lists every Claude Code session on this machine and says whether it is finished 
     - [Moving sessions](#moving-sessions)
     - [Deleting sessions](#deleting-sessions)
   - [CLI options](#cli-options)
-  - [Using another Claude config directory](#using-another-claude-config-directory)
+  - [Several Claude config directories and accounts](#several-claude-config-directories-and-accounts)
   - [Cost and caching](#cost-and-caching)
   - [How the `claude` calls are isolated](#how-the-claude-calls-are-isolated)
   - [Limits](#limits)
@@ -45,7 +45,7 @@ The gaps in the numbering leave room for new statuses, and Done stays last at 99
 | 99 | Done | Nothing left to do | Haiku |
 
 Ranks are defined in `STATUS_RANK` in `src/cc_sessions_man/cli.py`.
-The `--json` output includes each session's `status_rank`, `context_tokens` and `model`.
+The `--json` output includes each session's `status_rank`, `context_tokens`, `model` and `config_dir`.
 
 Only sessions that ended on a normal reply go to the model.
 For each one, the model gets your last prompt and Claude's final message.
@@ -124,7 +124,7 @@ cc-sessions-ui --refresh-interval 60   # auto-refresh every minute; 0 turns it o
 ```
 
 The UI is built with [Textual](https://textual.textualize.io/).
-It shows a table of sessions with status, start time, last activity, title, folder, context size and model.
+It shows a table of sessions with status, start time, last activity, title, folder, context size, model and CC dir.
 
 - **Context** is how full the session's context was at Claude's last reply: the input tokens it was given, including cached ones.
   It's shown as, for example, `134k` or `1.0M`, and is blank for sessions with no recorded usage.
@@ -133,6 +133,7 @@ It shows a table of sessions with status, start time, last activity, title, fold
 - **Model** is the model that wrote Claude's latest reply in the main conversation, shortened to, for example, `opus-5-5` or `haiku-4-5`.
   Subagents' models aren't shown. After a `/model` switch, it changes once Claude next replies. The details panel shows the full model ID.
   It's blank for sessions with no reply yet.
+- **CC dir** is the Claude config directory the session belongs to, which is the account it resumes with. See [Several Claude config directories and accounts](#several-claude-config-directories-and-accounts).
 - Folders longer than 40 characters keep their end, for example `…/my-app/.claude/skills/changelog-writer`. The details panel shows the full path.
 
 - The list appears as soon as the transcripts are scanned, using cached labels.
@@ -280,28 +281,32 @@ The confirmation dialog opens with Cancel selected, so pressing Enter by mistake
 | `--model M` | Model alias or ID (default `haiku`) |
 | `--batch-size N` | Sessions per `claude` call (default 5) |
 | `-j, --jobs N` | Parallel `claude` calls (default 16). They share your account's rate limits with other Claude sessions |
-| `--claude-home DIR` | Claude config directory (default `~/.claude`, or `$CLAUDE_CONFIG_DIR`) |
+| `--claude-home DIR` | Use only this Claude config directory (default: every `~/.claude*` directory, plus `$CLAUDE_CONFIG_DIR`) |
 | `--search QUERY` | AI search instead of listing: print the sessions matching QUERY, most relevant first, with a reason each (or JSON with `--json`). With `-n` or `--days`, only those sessions can match |
 | `--search-model M` | Model for AI search (default `sonnet`). Also in the UI |
 | `--search-budget USD` | Stop an AI search that costs more than USD (default 1). Also in the UI |
 
-## Using another Claude config directory
+## Several Claude config directories and accounts
 
-The tool reads the same directory Claude Code does:
+Each Claude Code login has its own config directory: `~/.claude` by default, or the directory in `CLAUDE_CONFIG_DIR`, for example through an alias such as `alias claude_work='CLAUDE_CONFIG_DIR=~/.claude_work claude'`.
+The tool reads all of them, so sessions from every account are listed together.
 
-- `$CLAUDE_CONFIG_DIR` if it's set and not empty. A leading `~` is expanded.
-- `~/.claude` otherwise.
-
-`--claude-home DIR` overrides both for one run.
-
-When the directory isn't `~/.claude`, the tool passes it on to `claude`:
-
-- Resuming from the UI runs `claude` with `CLAUDE_CONFIG_DIR` set to that directory, so `--resume` finds the session.
-- The resume commands the CLI prints start with `CLAUDE_CONFIG_DIR=...`.
+- **Which directories:** every directory matching `~/.claude*`, plus `$CLAUDE_CONFIG_DIR` if it's set.
+  To use another pattern, set `CC_SESSIONS_MAN_CLAUDE_DIRS_PATTERN`, for example `CC_SESSIONS_MAN_CLAUDE_DIRS_PATTERN='~/claude-configs/*'`.
+  They're looked for again on every refresh, so a new one shows up without restarting.
+- **Shared projects:** a directory whose `projects` is a symlink to another's (so both accounts can work on the same sessions) isn't read twice: its sessions are read from the directory that really holds them.
+- **CC dir:** each session belongs to one directory, shown in the UI's CC dir column and the `--json` output's `config_dir`:
+  - a running session: the directory it's running under;
+  - otherwise, the directory logged in with the account recorded in the transcript. Newer Claude Code versions record it each time a session starts or resumes;
+  - otherwise (older sessions): the directory that holds its transcript.
+- **Resuming:** Enter, `o` and the CLI's resume commands use the session's CC dir, setting `CLAUDE_CONFIG_DIR` when it isn't `~/.claude`.
+- **Running sessions** are found in every directory, so a session open under any account shows as Running and can't be renamed, moved or deleted.
+- **One directory only:** `--claude-home DIR` lists just that directory's sessions, following its `projects` symlink if it has one. Running sessions are still checked in every directory, so nothing open under another account is changed.
+- **Copies:** a copied config directory (a backup, say) doesn't list its sessions twice; the most recently written copy is shown.
 
 ```sh
-CLAUDE_CONFIG_DIR=~/.claude-work cc-sessions-ui
-cc-sessions --claude-home ~/.claude-work --pending
+cc-sessions-ui                                   # every account
+cc-sessions --claude-home ~/.claude_work --pending   # one account
 ```
 
 ## Cost and caching

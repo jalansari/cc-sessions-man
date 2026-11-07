@@ -10,8 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .accounts import project_roots
 from .headless import claude_command, stop
-from .scan import CLAUDE_HOME, Session
+from .scan import Homes, Session, config_dirs
 
 DEFAULT_SEARCH_MODEL = "sonnet"
 # A cap on one search's cost. claude checks it between turns, so a search can overshoot
@@ -41,13 +42,13 @@ SCHEMA = {
 SYSTEM_PROMPT = """You search Claude Code session transcripts to find the sessions \
 that match a user's query.
 
-The folder {projects} holds one folder per project. Each \
+Each of these folders holds one folder per project: {projects}. Each \
 `<project>/<session-id>.jsonl` file there is one session's transcript: JSON lines with \
 `type` (user, assistant, ...), `timestamp`, `cwd` and `message.content`. Slash \
 commands the user ran appear as `<command-name>/name</command-name>` in user entries. \
 Ignore the `<session-id>/` subfolders (subagent transcripts and tool output).
 
-Search with Grep over `*/*.jsonl` in that folder first, and read only small parts of \
+Search with Grep over `*/*.jsonl` in those folders first, and read only small parts of \
 files when you need to. Transcripts are large: never read a whole file.
 
 Judge relevance from what the matching lines say (use Grep's content output with a \
@@ -102,22 +103,25 @@ def build_prompt(sessions: list[Session], query: str) -> str:
 def call_claude(
     prompt: str,
     model: str,
-    projects: Path,
+    projects: Path | list[Path],
     budget: float,
     on_start: Callable[[subprocess.Popen], None] | None = None,
 ) -> dict:
-    """One headless search call with read-only tools over `projects`. Returns claude's
-    JSON result.
+    """One headless search call with read-only tools over the `projects` folders.
+    Returns claude's JSON result.
 
     `on_start` gets the process as soon as it starts, so the caller can terminate it.
     """
+    folders = [projects] if isinstance(projects, Path) else list(projects)
     cmd = claude_command(
         model,
-        SYSTEM_PROMPT.format(projects=projects, max_matches=MAX_MATCHES),
+        SYSTEM_PROMPT.format(
+            projects=", ".join(map(str, folders)), max_matches=MAX_MATCHES
+        ),
         SCHEMA,
         "Read,Grep,Glob",  # read-only: it can look, never change anything
-        "--add-dir",
-        str(projects),  # the only folder those tools can reach
+        # The only folders those tools can reach.
+        *(arg for f in folders for arg in ("--add-dir", str(f))),
         "--max-budget-usd",
         str(budget),
     )
@@ -175,7 +179,7 @@ def call_claude(
 def _run_search(
     prompt: str,
     model: str,
-    projects: Path,
+    projects: Path | list[Path],
     budget: float,
     on_start: Callable[[subprocess.Popen], None] | None = None,
 ) -> tuple[list[dict], float]:
@@ -191,11 +195,12 @@ def search(
     sessions: list[Session],
     query: str,
     model: str = DEFAULT_SEARCH_MODEL,
-    home: Path = CLAUDE_HOME,
+    homes: Homes | None = None,
     budget: float = DEFAULT_SEARCH_BUDGET,
     on_start: Callable[[subprocess.Popen], None] | None = None,
 ) -> SearchResult:
-    """Ask claude which of `sessions` match `query`, most relevant first.
+    """Ask claude which of `sessions` match `query`, most relevant first. It searches
+    the projects folders of `homes`: one config folder, several, or None for all.
 
     IDs that aren't among `sessions` are dropped (and listed in `unknown`), as are
     repeats.
@@ -203,8 +208,9 @@ def search(
     query = " ".join(query.split())
     if not query:
         raise ValueError("the search is empty")
+    projects = [root for root, _ in project_roots(config_dirs(homes))]
     raw, cost = _run_search(
-        build_prompt(sessions, query), model, home / "projects", budget, on_start
+        build_prompt(sessions, query), model, projects, budget, on_start
     )
     known = {s.session_id for s in sessions}
     result = SearchResult([], cost_usd=cost)

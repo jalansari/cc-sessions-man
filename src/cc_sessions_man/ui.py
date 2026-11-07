@@ -27,6 +27,7 @@ from textual.screen import ModalScreen
 from textual.theme import ThemeProvider
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static
 
+from .accounts import with_discovered
 from .classify import DEFAULT_BATCH_SIZE, DEFAULT_JOBS, Cache, classify, error_labels
 from .cli import (
     CACHE_PATH,
@@ -44,7 +45,15 @@ from .headless import stop
 from .move import move_session
 from .paths import Completer, problem_span, to_path
 from .rename import rename_session
-from .scan import Session, claude_env, live_sessions, parse_transcript, scan
+from .scan import (
+    Session,
+    claude_env,
+    config_dirs,
+    live_sessions,
+    parse_transcript,
+    scan,
+    session_home,
+)
 from .search import DEFAULT_SEARCH_BUDGET, DEFAULT_SEARCH_MODEL, SEARCH_TIMEOUT, search
 from .terminal import open_in_terminal
 
@@ -77,6 +86,7 @@ COLUMNS = [
     ("cwd", "Folder"),
     ("context", "Context"),
     ("model", "Model"),
+    ("config", "CC dir"),
 ]
 
 # How each column sorts: key function and whether it runs descending by default.
@@ -91,6 +101,7 @@ SORT_KEYS = {
         lambda r: (not r.session.model, short_model(r.session.model)),
         False,
     ),  # A to Z, blanks last
+    "config": (lambda r: r.session.config_dir, False),
 }
 
 # The orders the s key cycles through: (primary, secondary, tertiary).
@@ -120,6 +131,7 @@ COLUMN_NAMES = {
     "cwd": "folder",
     "context": "context size",
     "model": "model",
+    "config": "CC dir",
 }
 TITLE_MAX = 50
 FOLDER_MAX = 40
@@ -558,7 +570,7 @@ class SessionsApp(App[Session | None]):
 
     def __init__(
         self,
-        claude_home: Path,
+        claude_home: Path | None,
         model: str,
         use_llm: bool,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -597,7 +609,10 @@ class SessionsApp(App[Session | None]):
         self.batch_size = batch_size
         self.jobs = jobs
         self.classifying: set[str] = set()  # session IDs queued for the model
+        # An explicit --claude-home, or None to use every config folder found. The
+        # folders are found again on each scan, so new ones show up on refresh.
         self.claude_home = claude_home
+        self.config_dirs = config_dirs(claude_home)
         self.model = model
         self.use_llm = use_llm
         self.cache = Cache(CACHE_PATH)
@@ -700,7 +715,8 @@ class SessionsApp(App[Session | None]):
     ) -> bool | None:
         if not quiet:  # auto refreshes don't flash "Scanning…" every interval
             self.call_from_thread(self.set_status, "Scanning transcripts…")
-        sessions = scan(self.claude_home)
+        self.config_dirs = config_dirs(self.claude_home)
+        sessions = scan(self.config_dirs)
         # One split, used both to mark rows "Classifying…" and to choose what to send.
         cached, todo = self.cache.partition(sessions)
         send = todo if classify_now else []
@@ -929,6 +945,7 @@ class SessionsApp(App[Session | None]):
                 justify="right",
             ),
             Text(short_model(s.model)),
+            Text(short_path(s.config_dir)),
         )
 
     def render_table(self) -> None:
@@ -1048,6 +1065,13 @@ class SessionsApp(App[Session | None]):
     def on_data_table_row_selected(self, _event) -> None:
         self.action_resume()
 
+    def known_dirs(self) -> list:
+        """Every config folder found, for running checks and deletes, even with an
+        explicit --claude-home: a session may be open, or keep backups, under another
+        account sharing its projects.
+        """
+        return with_discovered(self.config_dirs)
+
     def resumable(self) -> Session | None:
         """The selected session, if it can be resumed; otherwise None, with a notice."""
         r = self.current_row()
@@ -1055,7 +1079,7 @@ class SessionsApp(App[Session | None]):
             return None
         # Checked now, not only from the scan: it may have been opened since.
         if r.group == "running" or r.session.session_id in live_sessions(
-            self.claude_home
+            self.known_dirs()
         ):
             self.notify(
                 "That session is still open in another terminal.", severity="warning"
@@ -1089,7 +1113,7 @@ class SessionsApp(App[Session | None]):
         if not (s := self.resumable()):
             return
         try:
-            open_in_terminal(s, self.claude_home)
+            open_in_terminal(s)
         except (OSError, RuntimeError) as exc:
             self.notify(
                 str(exc), title="Can't open a terminal", severity="error", markup=False
@@ -1132,7 +1156,7 @@ class SessionsApp(App[Session | None]):
         r = self.current_row()
         if r is None:
             return
-        if r.session.session_id in live_sessions(self.claude_home):
+        if r.session.session_id in live_sessions(self.known_dirs()):
             self.notify(
                 "That session is still open; use /rename in it.", severity="warning"
             )
@@ -1147,7 +1171,7 @@ class SessionsApp(App[Session | None]):
     def apply_rename(self, r: Row, title: str) -> None:
         s = r.session
         try:
-            rename_session(s, title, self.claude_home)
+            rename_session(s, title, self.known_dirs())
         except Exception as exc:
             self.notify(str(exc), title="Rename failed", severity="error")
             return
@@ -1181,7 +1205,7 @@ class SessionsApp(App[Session | None]):
         r = self.current_row()
         if r is None:
             return
-        if r.session.session_id in live_sessions(self.claude_home):
+        if r.session.session_id in live_sessions(self.known_dirs()):
             self.notify(
                 "That session is still open; exit it first.", severity="warning"
             )
@@ -1202,7 +1226,7 @@ class SessionsApp(App[Session | None]):
         s = r.session
         label = self.cache.get(s)
         try:
-            path = move_session(s, dest, self.claude_home)
+            path = move_session(s, dest, self.known_dirs())
         except Exception as exc:
             self.notify(str(exc), title="Move failed", severity="error")
             return
@@ -1244,7 +1268,7 @@ class SessionsApp(App[Session | None]):
             r = self.current_row()
             targets = [r.session] if r else []
         live = live_sessions(
-            self.claude_home
+            self.known_dirs()
         )  # re-check: one may have been resumed since the scan
         running = [s for s in targets if s.session_id in live]
         targets = [s for s in targets if s.session_id not in live]
@@ -1265,7 +1289,7 @@ class SessionsApp(App[Session | None]):
         deleted, failed, leftovers = set(), [], []
         for s in targets:
             try:
-                trash_session(s, self.claude_home)
+                trash_session(s, self.known_dirs())
             except Exception as exc:
                 if s.path.exists():
                     failed.append(f"{s.session_id[:8]}: {exc}")
@@ -1432,7 +1456,7 @@ class SessionsApp(App[Session | None]):
                 sessions,
                 query,
                 self.search_model,
-                self.claude_home,
+                self.config_dirs,
                 self.search_budget,
                 started,
             )
@@ -1570,7 +1594,9 @@ def main(argv=None) -> int:
     os.chdir(session.cwd)
     print(f"Resuming {session.session_id} in {short_path(os.getcwd())}…")
     os.execve(
-        claude, [claude, "--resume", session.session_id], claude_env(args.claude_home)
+        claude,
+        [claude, "--resume", session.session_id],
+        claude_env(session_home(session)),
     )
 
 

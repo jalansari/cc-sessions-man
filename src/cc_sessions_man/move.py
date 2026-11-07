@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from .scan import CLAUDE_HOME, Session, live_sessions
+from .scan import CLAUDE_HOME, Homes, Session, live_sessions
 
 # Claude Code cuts longer project folder names and adds a hash of the full path.
 PROJECT_NAME_MAX = 200
@@ -102,7 +102,7 @@ def _write_temp(target: Path, lines: list[bytes]) -> Path:
     return Path(fh.name)
 
 
-def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path:
+def move_session(s: Session, dest: str | Path, homes: Homes = CLAUDE_HOME) -> Path:
     """Move a session to the working folder `dest`. Returns the new transcript path.
 
     - Every `cwd` in the transcript is rewritten. A folder already in `dest` stays. The
@@ -118,7 +118,7 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
     dest = Path(dest).expanduser().resolve()  # like process.cwd(): symlinks resolved
     if not dest.is_dir():
         raise ValueError(f"{dest} is not a folder")
-    if s.session_id in live_sessions(home):  # checked now, not from the scan
+    if s.session_id in live_sessions(homes):  # checked now, not from the scan
         raise ValueError(f"session {s.session_id} is still running; exit it first")
 
     read_stat = s.path.stat()
@@ -158,7 +158,9 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
             line = _encode(e)  # untouched lines stay byte for byte
         out.append(line)
 
-    target_dir = home / "projects" / project_dir_name(str(dest))
+    # In the projects folder it's already in: config folders sharing one through a
+    # symlink then all still see it.
+    target_dir = s.path.parent.parent / project_dir_name(str(dest))
     target = target_dir / s.path.name
     in_place = target == s.path
     if in_place and out == lines:
@@ -176,7 +178,7 @@ def move_session(s: Session, dest: str | Path, home: Path = CLAUDE_HOME) -> Path
         if (now.st_size, now.st_mtime_ns) != (
             read_stat.st_size,
             read_stat.st_mtime_ns,
-        ) or s.session_id in live_sessions(home):
+        ) or s.session_id in live_sessions(homes):
             raise ValueError(
                 f"session {s.session_id} changed during the move; nothing was moved"
             )

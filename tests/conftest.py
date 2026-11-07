@@ -1,5 +1,6 @@
 import pytest
 
+import cc_sessions_man.accounts as accounts
 import cc_sessions_man.cli as cli
 import cc_sessions_man.delete as delete_mod
 import cc_sessions_man.scan as scan
@@ -12,6 +13,13 @@ def isolated_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(scan, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(cli, "CACHE_PATH", tmp_path / "cache" / "labels.json")
     monkeypatch.setattr(ui, "CACHE_PATH", tmp_path / "cache" / "labels.json")
+
+
+@pytest.fixture(autouse=True)
+def no_real_config_dirs(tmp_path, monkeypatch):
+    """Keep config folder discovery away from the real ~/.claude* folders."""
+    monkeypatch.setenv(accounts.PATTERN_ENV, str(tmp_path / "no-config-dirs-*"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
 
 
 @pytest.fixture

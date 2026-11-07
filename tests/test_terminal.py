@@ -178,7 +178,7 @@ def run_keys(tmp_path, monkeypatch, keys=("o",), cwd=None, fail=None, live=False
     home = make_home(tmp_path, ["a1"], cwd=cwd)
     opened, notices, rescans = [], [], []
 
-    def fake_open(s, home):
+    def fake_open(s, home=None):
         if fail:
             raise fail
         opened.append(s.session_id)

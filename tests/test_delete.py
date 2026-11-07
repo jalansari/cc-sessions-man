@@ -738,7 +738,7 @@ def test_model_column_shows_sorts_and_details(tmp_path, monkeypatch):
     async def steps(app, pilot):
         table = app.query_one(ui.DataTable)
         labels = [str(c.label) for c in table.columns.values()]
-        assert labels[-2:] == ["Context", "Model"]
+        assert labels[-3:] == ["Context", "Model", "CC dir"]
         cells = {
             r.session.session_id: str(table.get_cell(r.session.session_id, "model"))
             for r in app.rows
