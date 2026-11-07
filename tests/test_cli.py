@@ -1,7 +1,12 @@
 import json
+import re
+from importlib.metadata import PackageNotFoundError
+
+import pytest
 
 import cc_sessions_man.classify as classify_mod
 import cc_sessions_man.cli as cli
+import cc_sessions_man.ui as ui
 from cc_sessions_man.classify import Cache
 from cc_sessions_man.scan import parse_transcript
 
@@ -161,3 +166,36 @@ def test_limit_and_days_must_be_positive(tmp_path, monkeypatch, capsys):
             cli.main(["--claude-home", str(home), *bad])
         assert exc.value.code == 2
         capsys.readouterr()
+
+
+COMMANDS = [(cli.main, "cc-sessions"), (ui.main, "cc-sessions-ui")]
+
+
+@pytest.mark.parametrize("main, prog", COMMANDS)
+def test_version_prints_the_installed_version(main, prog, monkeypatch, capsys):
+    versions = {"cc-sessions-man": "1.2.3"}
+    monkeypatch.setattr(cli, "dist_version", lambda name: versions[name])
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    assert capsys.readouterr().out == f"{prog} 1.2.3\n"
+
+
+@pytest.mark.parametrize("main, prog", COMMANDS)
+def test_version_without_package_metadata_is_unknown(main, prog, monkeypatch, capsys):
+    def missing(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(cli, "dist_version", missing)
+    with pytest.raises(SystemExit):
+        main(["--version"])
+    assert capsys.readouterr().out == f"{prog} unknown\n"
+
+
+def test_version_is_a_real_version_number(capsys):
+    """The installed version, as hatch-vcs built it from the git tags."""
+    if cli.package_version() == "unknown":
+        pytest.skip("cc-sessions-man isn't installed")
+    with pytest.raises(SystemExit):
+        cli.main(["--version"])
+    assert re.fullmatch(r"cc-sessions \d+\.\d+\.\d+\S*\n", capsys.readouterr().out)
